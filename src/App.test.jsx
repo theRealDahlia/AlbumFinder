@@ -623,6 +623,16 @@ describe('stock', () => {
   })
 })
 
+describe('a city with no shops listing their hours', () => {
+  test('says so, and asks for the hours to be added', async () => {
+    api.findStores.mockResolvedValue({ city: PORTLAND.city, stores: [] })
+    render(<App />)
+    await search({ album: 'Rumours', city: 'Portland' })
+    expect((await screen.findByText(/No record stores with opening hours are mapped/)).textContent).toMatch(/on OpenStreetMap yet/)
+    expect(screen.queryByText(/Missing a shop\?/)).toBeNull()
+  })
+})
+
 describe('vinyl sellers verified on Discogs', () => {
   const SELLER = { seller: 'NearRecords', url: 'https://www.discogs.com/seller/NearRecords/profile' }
 

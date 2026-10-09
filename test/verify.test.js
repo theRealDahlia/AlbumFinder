@@ -171,7 +171,7 @@ test('GET /api/verification checks the shops a search returned, and only those',
   mockFetch({
     'nominatim.openstreetmap.org': () => json([{ addresstype: 'city', lat: '53.8', lon: '-1.55', display_name: 'Leeds', boundingbox: ['53.7', '53.9', '-1.7', '-1.4'] }]),
     'overpass-api.de': () =>
-      json({ elements: [{ type: 'node', id: 77, lat: 53.8, lon: -1.55, tags: { name: 'Leeds Wax', shop: 'records', website: 'https://leedswax.example', 'addr:city': 'Leeds' } }] }),
+      json({ elements: [{ type: 'node', id: 77, lat: 53.8, lon: -1.55, tags: { name: 'Leeds Wax', shop: 'records', opening_hours: 'Mo-Sa 10:00-18:00', website: 'https://leedswax.example', 'addr:city': 'Leeds' } }] }),
     'api.discogs.com/users/leedswax': () => json(profile({ username: 'LeedsWax', home_page: 'https://leedswax.example' })),
     'api.discogs.com/users/LeedsWax/inventory': () => json({ listings: [lp()] }),
   })

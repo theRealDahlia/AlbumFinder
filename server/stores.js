@@ -159,18 +159,19 @@ async function storesInBox(bbox, center) {
   const box = bbox.map((n) => n.toFixed(5)).join(',')
   // Record shops are mostly tagged shop=music; some mappers use shop=records,
   // and some second-hand/media shops are explicitly tagged as selling vinyl.
-  // Exact values and rare keys first let Overpass use its tag index instead of scanning every shop.
+  // Only shops that list their opening hours: a shop without them can't be told from a closed or
+  // long-gone one. Exact values and rare keys first let Overpass use its tag index instead of scanning every shop.
   const query = `[out:json][timeout:25];
 (
-  nwr["shop"="music"](${box});
-  nwr["shop"="records"](${box});
-  nwr["vinyl"~"^(yes|only)$"]["shop"](${box});
-  nwr["sales:vinyl"~"^(yes|only)$"]["shop"](${box});
+  nwr["shop"="music"]["opening_hours"](${box});
+  nwr["shop"="records"]["opening_hours"](${box});
+  nwr["vinyl"~"^(yes|only)$"]["shop"]["opening_hours"](${box});
+  nwr["sales:vinyl"~"^(yes|only)$"]["shop"]["opening_hours"](${box});
 );
 out center tags;`
   const elements = await overpass(query)
   return elements
-    .filter((e) => e.tags?.name && !INSTRUMENT_SHOP.test(e.tags.name))
+    .filter((e) => e.tags?.name && e.tags.opening_hours?.trim() && !INSTRUMENT_SHOP.test(e.tags.name))
     .map((e) => {
       const t = e.tags
       const lat = e.lat ?? e.center?.lat
@@ -184,7 +185,7 @@ out center tags;`
         city: t['addr:city'] || null,
         phone: t.phone || t['contact:phone'] || null,
         website: normaliseUrl(t.website || t['contact:website']),
-        hours: t.opening_hours || null,
+        hours: t.opening_hours.trim(),
         distanceKm: haversineKm(center.lat, center.lon, lat, lon),
       }
     })
@@ -232,10 +233,14 @@ async function writeJsonAtomic(file, value) {
   await rename(tmp, file)
 }
 
-/** Lists saved before timezones were added get one on the way out. */
-function withTimezone(value) {
-  if (value.city.timezone !== undefined) return value
-  return { ...value, city: { ...value.city, timezone: timezoneAt(value.city.lat, value.city.lon) } }
+/**
+ * Lists saved before timezones were added get one on the way out, and lists saved before shops
+ * needed opening hours lose the ones without.
+ */
+function fromDisk(value) {
+  const stores = value.stores.filter((s) => s.hours)
+  const timezone = value.city.timezone !== undefined ? value.city.timezone : timezoneAt(value.city.lat, value.city.lon)
+  return { ...value, city: { ...value.city, timezone }, stores }
 }
 
 export async function findStores(city, state = '') {
@@ -243,11 +248,11 @@ export async function findStores(city, state = '') {
   const c = placeQuery(city, state)
   const key = c.toLowerCase()
   const saved = (await loadStoresDisk())[key]
-  if (saved && Date.now() - saved.savedAt < STORES_FRESH_MS) return withTimezone(saved.value)
+  if (saved && Date.now() - saved.savedAt < STORES_FRESH_MS) return fromDisk(saved.value)
   try {
     return await refreshCity(c)
   } catch (err) {
-    if (saved && err.status === 502) return withTimezone(saved.value)
+    if (saved && err.status === 502) return fromDisk(saved.value)
     throw err
   }
 }

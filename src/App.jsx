@@ -655,7 +655,7 @@ export default function App() {
                     <ul className="stores">
                       {allStores.length === 0 && (
                         <li className="notice">
-                          No record stores are mapped {where} on OpenStreetMap yet. Try a nearby larger city, or{' '}
+                          No record stores with opening hours are mapped {where} on OpenStreetMap yet. Try a nearby larger city, or{' '}
                           <a href={osmEditUrl} target="_blank" rel="noreferrer">
                             add a shop you know
                           </a>
@@ -696,7 +696,7 @@ export default function App() {
                   <a href={osmEditUrl} target="_blank" rel="noreferrer">
                     Add it to OpenStreetMap
                   </a>
-                  , and it will appear here once our copy of the map refreshes (within a week).
+                  , with its opening hours, and it will appear here once our copy of the map refreshes (within a week).
                 </p>
               )}
             </section>

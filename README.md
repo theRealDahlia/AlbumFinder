@@ -50,7 +50,7 @@ docker run -p 3000:3000 -v album-finder-data:/data -e CONTACT=you@example.com al
 
 **Moving the map** searches where you look: drag or zoom it, and once it stops the store list updates to the shops around its center (named, e.g. "around Soho, City of Westminster", with a dashed outline of the area). The album stays as it is; only the shops are looked up again. The area matches what's visible, up to 25 km; zoomed out further than that, the map asks you to zoom in. Map moves update the link (`/?album=Rumours&near=51.513,-0.135&radius=5`) without adding Back steps.
 
-**Results.** Shops listing the album in stock come first, then the rest nearest first. Opening hours are shown in plain words with **Open now / Closed**, worked out in the shop's own timezone; filters narrow by distance or to shops open now. On phones, a List/Map switch keeps the map from crowding the list. Each card links to OpenStreetMap ("Fix details") so anyone can correct a shop's details, and "Missing a shop?" opens the map editor.
+**Results.** Only shops that list their opening hours on OpenStreetMap are shown: a shop with none can't be told from one that has closed, and the hours are what the Open now / Closed status needs. Shops listing the album in stock come first, then the rest nearest first. Opening hours are shown in plain words with **Open now / Closed**, worked out in the shop's own timezone; filters narrow by distance or to shops open now. On phones, a List/Map switch keeps the map from crowding the list. Each card links to OpenStreetMap ("Fix details") so anyone can correct a shop's details, and "Missing a shop?" opens the map editor.
 
 ## Stock
 
