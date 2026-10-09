@@ -60,7 +60,8 @@ export async function unlinkSeller(storeId) {
 
 // ---------- syncing inventories ----------
 
-async function discogs(path) {
+/** One Discogs API call, paced to its rate limit. A refusal carries Discogs' own status as `upstream`. */
+export async function discogs(path) {
   await pace('discogs', interval())
   return record('discogs', async () => {
     const res = await fetch(`https://api.discogs.com${path}`, {
@@ -72,7 +73,7 @@ async function discogs(path) {
       signal: AbortSignal.timeout(20000),
     })
     if (res.status === 404) throw new HttpError(404, 'No such Discogs seller')
-    if (!res.ok) throw new HttpError(502, `Discogs returned ${res.status}`)
+    if (!res.ok) throw Object.assign(new HttpError(502, `Discogs returned ${res.status}`), { upstream: res.status })
     return res.json()
   })
 }

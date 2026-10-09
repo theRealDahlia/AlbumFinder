@@ -61,6 +61,8 @@ test('turns Overpass elements into store records', async () => {
   )
   const [everyday, crossroads, bad] = stores
   assert.equal(everyday.address, '1313 W Burnside St, Portland')
+  assert.equal(everyday.city, 'Portland')
+  assert.equal(crossroads.city, null)
   assert.equal(everyday.website, 'https://everydaymusic.com')
   assert.equal(everyday.phone, '+1 503 274 0961')
   assert.equal(everyday.hours, 'Mo-Su 11:00-18:00')
@@ -68,7 +70,7 @@ test('turns Overpass elements into store records', async () => {
   assert.deepEqual([crossroads.lat, crossroads.lon], [45.5, -122.6])
   assert.deepEqual(
     Object.keys(everyday).sort(),
-    ['address', 'distanceKm', 'hours', 'id', 'lat', 'lon', 'name', 'phone', 'website'],
+    ['address', 'city', 'distanceKm', 'hours', 'id', 'lat', 'lon', 'name', 'phone', 'website'],
     'only fields the app uses',
   )
   assert.ok(bad.website.startsWith('https://'), 'non-http URLs are never passed through as-is')

@@ -181,6 +181,7 @@ out center tags;`
         lat,
         lon,
         address: formatAddress(t),
+        city: t['addr:city'] || null,
         phone: t.phone || t['contact:phone'] || null,
         website: normaliseUrl(t.website || t['contact:website']),
         hours: t.opening_hours || null,
