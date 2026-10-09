@@ -15,7 +15,42 @@ function price({ price, currency }) {
   }
 }
 
-export default function StoreCard({ store, timezone, now, stock = [], verified, selected, onSelect }) {
+/** What a shop with an inventory on Discogs doesn't have, for what was searched. */
+function noneListed({ album, artist }) {
+  if (!artist) return `No ${album} in their Discogs stock`
+  return album ? `No ${album} or other records by ${artist} in their Discogs stock` : `No records by ${artist} in their Discogs stock`
+}
+
+function StockList({ title, items, className = '' }) {
+  return (
+    <div className={`stock ${className}`} onClick={(e) => e.stopPropagation()}>
+      <p className="stock-title">{title}</p>
+      <ul>
+        {items.map((item, i) => (
+          <li key={`${item.source}-${i}`}>
+            <span className="stock-what">
+              {item.title}
+              {item.format && <small> · {item.format}</small>}
+              {item.condition && <small> · {item.condition}</small>}
+            </span>
+            {price(item) && <span className="stock-price">{price(item)}</span>}
+            <span className="stock-source">
+              {item.url ? (
+                <a href={item.url} target="_blank" rel="noreferrer">
+                  {SOURCE[item.source]}
+                </a>
+              ) : (
+                SOURCE[item.source]
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+export default function StoreCard({ store, timezone, now, stock = [], others = [], checked = false, wanted = { album: '', artist: '' }, verified, selected, onSelect }) {
   const card = useRef(null)
   // Stores are often picked on the map; bring the card into view ("nearest" leaves it alone if visible).
   useEffect(() => {
@@ -63,32 +98,11 @@ export default function StoreCard({ store, timezone, now, stock = [], verified, 
         </p>
       )}
 
-      {stock.length > 0 && (
-        <div className="stock" onClick={(e) => e.stopPropagation()}>
-          <p className="stock-title">In stock</p>
-          <ul>
-            {stock.map((item, i) => (
-              <li key={`${item.source}-${i}`}>
-                <span className="stock-what">
-                  {item.title}
-                  {item.format && <small> · {item.format}</small>}
-                  {item.condition && <small> · {item.condition}</small>}
-                </span>
-                {price(item) && <span className="stock-price">{price(item)}</span>}
-                <span className="stock-source">
-                  {item.url ? (
-                    <a href={item.url} target="_blank" rel="noreferrer">
-                      {SOURCE[item.source]}
-                    </a>
-                  ) : (
-                    SOURCE[item.source]
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
+      {stock.length > 0 && <StockList title="In stock" items={stock} />}
+      {stock.length === 0 && others.length > 0 && (
+        <StockList title={`Sells other works by ${wanted.artist}`} items={others} className="other-works" />
       )}
+      {stock.length === 0 && others.length === 0 && checked && <p className="no-stock">{noneListed(wanted)}</p>}
 
       <dl className="details">
         {store.address && (

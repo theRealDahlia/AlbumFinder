@@ -19,10 +19,14 @@ export const findStoresNear = (lat, lon, radius, signal) =>
 export const suggest = (field, q, artist, signal) =>
   request(`/api/suggest?${new URLSearchParams({ field, q, artist })}`, signal).then((d) => d.suggestions)
 
-/** What shops linked to Discogs have in stock: { [storeId]: [items] }. */
+/**
+ * What verified (or linked) shops have for an album or artist, from their Discogs inventories:
+ * { stock: { [storeId]: items }, others: { [storeId]: items }, checked: [storeId], pending }.
+ * `stock` has the album, `others` has other records by the artist, and a shop in `checked` but in
+ * neither has neither; `pending` is how many inventories are still downloading.
+ */
 export const findStock = (album, artist, signal) =>
-  request(`/api/stock?${new URLSearchParams({ album, artist })}`, signal).then((d) => d.stock)
-
+  request(`/api/stock?${new URLSearchParams({ album, artist })}`, signal)
 
 /** Which of these shops are confirmed as vinyl sellers on Discogs: { verified: { [storeId]: { seller, url } }, pending }. */
 export const findVerification = (ids, signal) =>

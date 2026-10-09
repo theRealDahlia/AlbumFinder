@@ -23,8 +23,9 @@ const RADII_MILES = [1, 2, 5, 10, 25]
 // Discogs checks happen one at a time in the background: ask for the nearest shops (the server
 // takes at most 100), and ask again every few seconds for up to about seven minutes.
 const VERIFY_MAX = 100
-const VERIFY_EVERY_MS = 15000
-const VERIFY_ATTEMPTS = 30
+const POLL_EVERY_MS = 15000
+const POLL_ATTEMPTS = 30
+const NO_STOCK = { stock: {}, others: {}, checked: [] }
 const FIELDS = ['album', 'artist', 'city', 'state', 'near', 'radius']
 // Moving the map searches around its center, once it has stopped moving for a moment, and
 // not when zoomed out so far that "around here" would be a whole region.
@@ -99,7 +100,8 @@ export default function App() {
   const [verified, setVerified] = useState({})
   const [verifyPending, setVerifyPending] = useState(false) // some shops are still being checked
   const [view, setView] = useState('list') // phones show the list or the map
-  const [stockFor, setStockFor] = useState({ key: null, stock: {} })
+  const [stockFor, setStockFor] = useState({ key: null, stock: {}, others: {}, checked: [] })
+  const [stockPending, setStockPending] = useState(false) // some shops' inventories are still downloading
   const [now, setNow] = useState(() => new Date())
   // Changes with each new search, telling the map to fit itself to the new stores. Moving
   // the map doesn't change it, so the map never jumps away from where it was put.
@@ -335,16 +337,29 @@ export default function App() {
   const stockTitle = album?.title ?? ''
   const stockArtist = album?.artist ?? artistName
   const stockKey = hasResults && (album || artistName) ? JSON.stringify([stockTitle, stockArtist]) : null
+  // Shops are verified, and their inventories downloaded, in the background: ask again as more
+  // shops are confirmed (verifiedKey) and while inventories are still arriving.
+  const verifiedKey = Object.keys(verified).sort().join(',')
   useEffect(() => {
     if (!stockKey) return
     const request = new AbortController()
-    api
-      .findStock(stockTitle, stockArtist, request.signal)
-      .then((stock) => setStockFor({ key: stockKey, stock }))
-      .catch(() => {}) // stock is a bonus; the store list stands on its own
-    return () => request.abort()
-  }, [stockKey, stockTitle, stockArtist])
-  const stock = stockFor.key === stockKey ? stockFor.stock : {}
+    let timer
+    const check = (attempt) =>
+      api
+        .findStock(stockTitle, stockArtist, request.signal)
+        .then(({ stock, others, checked, pending }) => {
+          setStockFor({ key: stockKey, stock, others, checked })
+          setStockPending(pending > 0)
+          if (pending && attempt < POLL_ATTEMPTS) timer = setTimeout(() => check(attempt + 1), POLL_EVERY_MS)
+        })
+        .catch(() => setStockPending(false)) // stock is a bonus; the store list stands on its own
+    check(1)
+    return () => {
+      request.abort()
+      clearTimeout(timer)
+    }
+  }, [stockKey, stockTitle, stockArtist, verifiedKey])
+  const { stock, others, checked } = stockFor.key === stockKey ? stockFor : NO_STOCK
 
   // ---------- vinyl sellers confirmed on Discogs ----------
   // The server checks shops in the background (Discogs is slow to ask), so ask again until it's done.
@@ -365,7 +380,7 @@ export default function App() {
         .then(({ verified: found, pending }) => {
           setVerified((known) => ({ ...known, ...found }))
           setVerifyPending(pending > 0)
-          if (pending && attempt < VERIFY_ATTEMPTS) timer = setTimeout(() => check(attempt + 1), VERIFY_EVERY_MS)
+          if (pending && attempt < POLL_ATTEMPTS) timer = setTimeout(() => check(attempt + 1), POLL_EVERY_MS)
         })
         .catch(() => setVerifyPending(false)) // a bonus; the store list stands on its own
     check(1)
@@ -399,13 +414,16 @@ export default function App() {
   // ---------- the store list ----------
   const timezone = place?.city.timezone
   const allStores = place ? place.stores : []
+  // Shops with the album first, then those with other records by the artist, then the rest.
+  const stockRank = (s) => (stock[s.id]?.length ? 0 : others[s.id]?.length ? 1 : 2)
   const stores = allStores
     .filter((s) => radiusMiles == null || roundedMiles(s.distanceKm) <= radiusMiles)
     .filter((s) => !openOnly || openStatus(parseHours(s.hours), now, timezone)?.open)
-    .sort((a, b) => Number(Boolean(stock[b.id]?.length)) - Number(Boolean(stock[a.id]?.length)) || a.distanceKm - b.distanceKm)
+    .sort((a, b) => stockRank(a) - stockRank(b) || a.distanceKm - b.distanceKm)
   const inStockCount = allStores.filter((s) => stock[s.id]?.length).length
+  const otherWorksCount = allStores.filter((s) => !stock[s.id]?.length && others[s.id]?.length).length
   const anyHours = allStores.some((s) => parseHours(s.hours))
-  // Shops confirmed on Discogs are listed apart from the rest (each list keeps the stock-then-nearest order).
+  const wanted = { album: album?.title ?? '', artist: stockArtist ?? '' }
   const card = (s) => (
     <StoreCard
       key={s.id}
@@ -413,11 +431,15 @@ export default function App() {
       timezone={timezone}
       now={now}
       stock={stock[s.id]}
+      others={others[s.id]}
+      checked={checked.includes(s.id)}
+      wanted={wanted}
       verified={verified[s.id]}
       selected={s.id === selectedId}
       onSelect={() => setSelectedId(s.id)}
     />
   )
+  // Shops confirmed on Discogs are listed apart from the rest (each list keeps the stock-then-nearest order).
   const verifiedStores = stores.filter((s) => verified[s.id])
   const otherStores = stores.filter((s) => !verified[s.id])
   const filtered = stores.length !== allStores.length
@@ -578,13 +600,15 @@ export default function App() {
                     <p className="sub">
                       {inStockCount > 0 &&
                         `${inStockCount} ${inStockCount === 1 ? 'has' : 'have'} ${album ? 'it' : 'records by them'} listed in stock. `}
+                      {otherWorksCount > 0 &&
+                        `${otherWorksCount} more ${otherWorksCount === 1 ? 'sells' : 'sell'} other records by ${stockArtist}. `}
                       Nearest first. Call ahead to check{' '}
                       {album ? `whether they have ${album.title}` : `what they have by ${artistName}`}.
                     </p>
                   )}
-                  {verifyPending && (
+                  {(verifyPending || stockPending) && (
                     <p className="sub" role="status">
-                      Checking which shops sell vinyl on Discogs…
+                      Checking shops on Discogs…
                     </p>
                   )}
                 </div>

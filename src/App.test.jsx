@@ -55,6 +55,8 @@ const store = (n, name, distanceKm) => ({
   website: null,
   hours: null,
 })
+// What /api/stock answers; `parts` says what's different from "nothing found anywhere".
+const report = (parts = {}) => ({ stock: {}, others: {}, checked: [], pending: 0, ...parts })
 const PORTLAND = {
   city: { name: 'Portland, Multnomah County, Oregon, United States', lat: 45.5, lon: -122.6 },
   stores: [store(2, 'Far Records', 5.2), store(1, 'Near Records', 0.4)],
@@ -90,7 +92,7 @@ beforeEach(() => {
   api.findStores.mockResolvedValue(PORTLAND)
   api.findStoresNear.mockResolvedValue({ ...PORTLAND, city: { ...PORTLAND.city, name: 'your location', near: true } })
   api.suggest.mockResolvedValue([])
-  api.findStock.mockResolvedValue({})
+  api.findStock.mockResolvedValue(report())
   api.findVerification.mockResolvedValue({ verified: {}, pending: 0 })
   user = userEvent.setup()
 })
@@ -572,7 +574,7 @@ describe('suggestions', () => {
 
 describe('stock', () => {
   test('shops with the album in stock come first, with price, condition and source', async () => {
-    api.findStock.mockResolvedValue({
+    api.findStock.mockResolvedValue(report({ stock: {
       'node/2': [
         {
           source: 'discogs',
@@ -585,7 +587,7 @@ describe('stock', () => {
         },
       ],
       'node/1': [{ source: 'discogs', title: 'Rumours', format: 'LP', condition: 'Mint (M)', price: 25, currency: 'GBP' }],
-    })
+    } }))
     render(<App />)
     await search({ album: 'Rumours', artist: 'Fleetwood Mac', city: 'Portland' })
     expect(await screen.findAllByText('In stock')).toHaveLength(2)
@@ -599,7 +601,7 @@ describe('stock', () => {
   })
 
   test('a shop with stock is listed before nearer shops without', async () => {
-    api.findStock.mockResolvedValue({ 'node/2': [{ source: 'discogs', title: 'Rumours', format: 'LP' }] })
+    api.findStock.mockResolvedValue(report({ stock: { 'node/2': [{ source: 'discogs', title: 'Rumours', format: 'LP' }] } }))
     render(<App />)
     await search({ album: 'Rumours', city: 'Portland' })
     await screen.findByText('In stock')
@@ -620,6 +622,116 @@ describe('stock', () => {
     await search({ album: 'Rumours', city: 'Portland' })
     expect(await screen.findByText('2 record stores in Portland')).toBeTruthy()
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+describe('what verified shops have for the search', () => {
+  const item = (title, extra = {}) => ({ source: 'discogs', title, format: 'LP', ...extra })
+  const FOUR = {
+    ...PORTLAND,
+    stores: [store(1, 'Nearest Records', 0.1), store(2, 'Second Records', 1), store(3, 'Third Records', 2), store(4, 'Fourth Records', 3)],
+  }
+  // 4 has the album, 3 only other Fleetwood Mac, 2 has neither, and 1 has no inventory to look in.
+  const MIXED = report({
+    stock: { 'node/4': [item('Rumours', { price: 22, currency: 'USD' })] },
+    others: { 'node/3': [item('Tusk'), item('Mirage')] },
+    checked: ['node/2', 'node/3', 'node/4'],
+  })
+  const card = (name) => screen.getByRole('button', { name }).closest('li')
+
+  async function searchRumours() {
+    api.findStores.mockResolvedValue(FOUR)
+    render(<App />)
+    await search({ album: 'Rumours', artist: 'Fleetwood Mac', city: 'Portland' })
+    await screen.findByRole('heading', { name: 'Rumours' })
+  }
+
+  test('a shop with the album is marked in stock, with what it has', async () => {
+    api.findStock.mockResolvedValue(MIXED)
+    await searchRumours()
+    await within(card('Fourth Records')).findByText('In stock')
+    expect(within(card('Fourth Records')).getByText('$22.00')).toBeTruthy()
+  })
+
+  test('a shop with other records by the artist but not the album says so, and lists them', async () => {
+    api.findStock.mockResolvedValue(MIXED)
+    await searchRumours()
+    const third = within(card('Third Records'))
+    expect(await third.findByText('Sells other works by Fleetwood Mac')).toBeTruthy()
+    expect(third.getByText('Tusk')).toBeTruthy()
+    expect(third.getByText('Mirage')).toBeTruthy()
+    expect(third.queryByText('In stock')).toBeNull()
+  })
+
+  test('a shop with neither the album nor the artist says that', async () => {
+    api.findStock.mockResolvedValue(MIXED)
+    await searchRumours()
+    expect(await within(card('Second Records')).findByText('No Rumours or other records by Fleetwood Mac in their Discogs stock')).toBeTruthy()
+  })
+
+  test('a shop without an inventory to search says nothing either way', async () => {
+    api.findStock.mockResolvedValue(MIXED)
+    await searchRumours()
+    await within(card('Fourth Records')).findByText('In stock')
+    const first = card('Nearest Records')
+    expect(within(first).queryByText(/In stock|Sells other works|in their Discogs stock/)).toBeNull()
+  })
+
+  test('shops are ordered: the album, then other works by the artist, then the rest nearest first', async () => {
+    api.findStock.mockResolvedValue(MIXED)
+    await searchRumours()
+    await screen.findAllByText('In stock')
+    expect(screen.getAllByRole('button', { name: /Records$/ }).map((b) => b.textContent)).toEqual([
+      'Fourth Records',
+      'Third Records',
+      'Nearest Records',
+      'Second Records',
+    ])
+  })
+
+  test('the summary counts both', async () => {
+    api.findStock.mockResolvedValue(MIXED)
+    await searchRumours()
+    expect(await screen.findByText(/1 has it listed in stock\. 1 more sells other records by Fleetwood Mac\./)).toBeTruthy()
+  })
+
+  test('for an artist search, a shop without their records says so', async () => {
+    history.replaceState(null, '', '/?artist=Radiohead&city=Portland')
+    api.searchAlbums.mockResolvedValue([album('r1', 'OK Computer', 'Radiohead')])
+    api.findStock.mockResolvedValue(report({ checked: ['node/1'] }))
+    render(<App />)
+    await screen.findByRole('button', { name: 'Near Records' })
+    expect(await within(card('Near Records')).findByText('No records by Radiohead in their Discogs stock')).toBeTruthy()
+  })
+
+  test('asks again while inventories are downloading, then stops', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      history.replaceState(null, '', '/?album=Rumours&artist=Fleetwood+Mac&city=Portland')
+      api.findStores.mockResolvedValue(FOUR)
+      api.findStock.mockResolvedValueOnce(report({ pending: 2 })).mockResolvedValue(MIXED)
+      render(<App />)
+      await screen.findByText('4 record stores in Portland')
+      await waitFor(() => expect(api.findStock).toHaveBeenCalledTimes(1))
+      expect((await screen.findByRole('status')).textContent).toMatch(/Checking shops on Discogs/)
+      await act(() => vi.advanceTimersByTimeAsync(15000))
+      expect(await screen.findAllByText('In stock')).toHaveLength(1)
+      expect(screen.queryByRole('status')).toBeNull()
+      await act(() => vi.advanceTimersByTimeAsync(60000))
+      expect(api.findStock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('asks again when another shop is confirmed on Discogs', async () => {
+    const check = controllable()
+    api.findVerification.mockImplementation(check.impl)
+    api.findStock.mockResolvedValue(report())
+    await searchRumours()
+    await waitFor(() => expect(api.findStock).toHaveBeenCalledTimes(1))
+    await act(async () => check.calls[0].resolve({ verified: { 'node/2': { seller: 'S', url: 'https://www.discogs.com/seller/S/profile' } }, pending: 0 }))
+    await waitFor(() => expect(api.findStock).toHaveBeenCalledTimes(2))
   })
 })
 
@@ -712,7 +824,7 @@ describe('vinyl sellers verified on Discogs', () => {
     expect(screen.queryByRole('status')).toBeNull()
     await waitFor(() => expect(check.calls).toHaveLength(1))
     await act(async () => check.calls[0].resolve({ verified: {}, pending: 2 }))
-    expect((await screen.findByRole('status')).textContent).toMatch(/Checking which shops sell vinyl on Discogs/)
+    expect((await screen.findByRole('status')).textContent).toMatch(/Checking shops on Discogs/)
   })
 
   test('keeps asking while shops are still being checked, then stops', async () => {

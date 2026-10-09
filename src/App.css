@@ -357,6 +357,11 @@ button.link.back:hover { color: var(--text); text-decoration: underline; }
 .stock-price { font-weight: 700; }
 .stock-source { grid-column: 1 / -1; font-size: 12px; }
 .stock-source a { color: var(--ok); }
+/* Not the album, but other records by the artist: informative rather than a win, so not green. */
+.stock.other-works { background: var(--surface-2); }
+.other-works .stock-title { color: var(--muted); }
+.other-works .stock-source a { color: var(--text); }
+.no-stock { margin: 10px 0 0; font-size: 14px; color: var(--muted); }
 
 /* Phones: a List/Map switch instead of the map above a long list. */
 @media (max-width: 860px) {
