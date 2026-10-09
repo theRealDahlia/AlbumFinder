@@ -76,7 +76,7 @@ createServer((req, res) => {
     res.end()
   })
 }).listen(PORT, () => {
-  console.log(`Album Finder running at http://localhost:${PORT}`)
+  console.log(`Stacks running at http://localhost:${PORT}`)
 })
 
 // Background upkeep: re-check store lists that are about to go stale, a few at a time,

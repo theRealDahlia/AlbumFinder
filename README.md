@@ -1,4 +1,4 @@
-# Album Finder
+# Stacks
 
 Find vinyl records on real shelves. Search for an album or an artist, pick a city (or use your location), and see the record stores there: which ones list it in stock, which are open now, and phone numbers, websites and directions for the rest.
 

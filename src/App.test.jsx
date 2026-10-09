@@ -98,7 +98,7 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
-// Exact label text ("State" also says "optional"); a loose match would hit "Album Finder home".
+// Exact label text ("State" also says "optional"); a loose match would hit "Stacks home".
 const field = (name) => screen.getByLabelText(name === 'State' ? /^State\s*optional$/ : name)
 
 async function search({ album = '', artist = '', city = '', state = '' }) {
@@ -114,6 +114,12 @@ const steps = () => [...document.querySelectorAll('.loading-steps li')]
 // ---------- tests ----------
 
 describe('front page', () => {
+  test('the logo says Stacks', () => {
+    render(<App />)
+    expect(screen.getByRole('link', { name: 'Stacks home' }).textContent).toBe('Stacks')
+    expect(screen.queryByText('Album Finder')).toBeNull()
+  })
+
   test('shows the headline, search form and suggestions, and no results', () => {
     render(<App />)
     expect(screen.getByRole('heading', { level: 1 })).toHaveProperty('textContent', 'Find that record on a real shelf.')
@@ -233,7 +239,7 @@ describe('loading', () => {
     api.searchAlbums.mockImplementation(albums.impl)
     render(<App />)
     await search({ album: 'Rumours', city: 'Portland' })
-    await user.click(screen.getByRole('link', { name: 'Album Finder home' }))
+    await user.click(screen.getByRole('link', { name: 'Stacks home' }))
 
     expect(albums.calls[0].signal.aborted).toBe(true)
     expect(screen.getByRole('heading', { level: 1 })).toBeTruthy()
@@ -247,7 +253,7 @@ describe('loading', () => {
     render(<App />)
     await search({ album: 'Rumours', city: 'Portland' })
     await screen.findByRole('heading', { name: 'Rumours' })
-    fireEvent.click(screen.getByRole('link', { name: 'Album Finder home' }), { metaKey: true })
+    fireEvent.click(screen.getByRole('link', { name: 'Stacks home' }), { metaKey: true })
     expect(screen.getByRole('heading', { name: 'Rumours' })).toBeTruthy()
   })
 })
@@ -381,7 +387,7 @@ describe('browser history', () => {
     expect(field('Album').value).toBe('Rumours')
     expect(location.search).toBe('?album=Rumours&city=Portland')
 
-    await user.click(screen.getByRole('link', { name: 'Album Finder home' }))
+    await user.click(screen.getByRole('link', { name: 'Stacks home' }))
     expect(location.pathname + location.search).toBe('/')
     api.searchAlbums.mockResolvedValue([RUMOURS])
     await act(async () => history.back())

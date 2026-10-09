@@ -1,4 +1,4 @@
-# Album Finder: build the site, then run it with only what production needs.
+# Stacks: build the site, then run it with only what production needs.
 #
 #   docker build -t album-finder .
 #   docker run -p 3000:3000 -v album-finder-data:/data -e CONTACT=you@example.com album-finder

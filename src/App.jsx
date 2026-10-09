@@ -458,9 +458,9 @@ export default function App() {
   return (
     <div className="app">
       <header className={`hero ${home ? 'home' : 'compact'}`}>
-        <a href="/" className="brand" onClick={goHome} aria-label="Album Finder home">
+        <a href="/" className="brand" onClick={goHome} aria-label="Stacks home">
           <Vinyl />
-          <span>Album Finder</span>
+          <span>Stacks</span>
         </a>
         <div className="hero-main">
           {home && (
