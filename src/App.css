@@ -339,6 +339,13 @@ button.link.back:hover { color: var(--text); text-decoration: underline; }
 .open-status.open { color: var(--ok); }
 .open-status.closed { color: var(--muted); }
 .store.has-stock { border-color: var(--ok); }
+.verified { margin: 6px 0 0; }
+.verified a {
+  display: inline-block; padding: 1px 10px; border-radius: 999px; background: var(--ok-bg); color: var(--ok);
+  font-size: 12px; font-weight: 700; text-decoration: none;
+}
+.verified a:hover { text-decoration: underline; }
+.verified a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .stock { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--ok-bg); cursor: default; }
 .stock-title { margin: 0 0 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ok); }
 .stock ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }

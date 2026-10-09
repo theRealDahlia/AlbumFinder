@@ -20,6 +20,11 @@ const EXAMPLES = [
 }))
 
 const RADII_MILES = [1, 2, 5, 10, 25]
+// Discogs checks happen one at a time in the background: ask for the nearest shops (the server
+// takes at most 100), and ask again every few seconds for up to about seven minutes.
+const VERIFY_MAX = 100
+const VERIFY_EVERY_MS = 15000
+const VERIFY_ATTEMPTS = 30
 const FIELDS = ['album', 'artist', 'city', 'state', 'near', 'radius']
 // Moving the map searches around its center, once it has stopped moving for a moment, and
 // not when zoomed out so far that "around here" would be a whole region.
@@ -89,6 +94,10 @@ export default function App() {
   const [searched, setSearched] = useState(null)
   const [radiusMiles, setRadiusMiles] = useState(null)
   const [openOnly, setOpenOnly] = useState(false)
+  const [verifiedOnly, setVerifiedOnly] = useState(false)
+  // Shops confirmed as vinyl sellers on Discogs: { [storeId]: { seller, url } }. Only grows, since it's
+  // a fact about the shop, so moving the map doesn't make badges flicker.
+  const [verified, setVerified] = useState({})
   const [view, setView] = useState('list') // phones show the list or the map
   const [stockFor, setStockFor] = useState({ key: null, stock: {} })
   const [now, setNow] = useState(() => new Date())
@@ -337,6 +346,34 @@ export default function App() {
   }, [stockKey, stockTitle, stockArtist])
   const stock = stockFor.key === stockKey ? stockFor.stock : {}
 
+  // ---------- vinyl sellers confirmed on Discogs ----------
+  // The server checks shops in the background (Discogs is slow to ask), so ask again until it's done.
+  const verifyKey = place
+    ? [...place.stores]
+        .sort((a, b) => a.distanceKm - b.distanceKm)
+        .slice(0, VERIFY_MAX)
+        .map((s) => s.id)
+        .join(',')
+    : ''
+  useEffect(() => {
+    if (!verifyKey) return
+    const request = new AbortController()
+    let timer
+    const check = (attempt) =>
+      api
+        .findVerification(verifyKey.split(','), request.signal)
+        .then(({ verified: found, pending }) => {
+          setVerified((known) => ({ ...known, ...found }))
+          if (pending && attempt < VERIFY_ATTEMPTS) timer = setTimeout(() => check(attempt + 1), VERIFY_EVERY_MS)
+        })
+        .catch(() => {}) // a bonus; the store list stands on its own
+    check(1)
+    return () => {
+      request.abort()
+      clearTimeout(timer)
+    }
+  }, [verifyKey])
+
   // ---------- suggestions ----------
   const albumSuggestions = useSuggestions('album', albumQuery, { artist: artistQuery })
   const artistSuggestions = useSuggestions('artist', artistQuery)
@@ -364,9 +401,11 @@ export default function App() {
   const stores = allStores
     .filter((s) => radiusMiles == null || roundedMiles(s.distanceKm) <= radiusMiles)
     .filter((s) => !openOnly || openStatus(parseHours(s.hours), now, timezone)?.open)
+    .filter((s) => !verifiedOnly || verified[s.id])
     .sort((a, b) => Number(Boolean(stock[b.id]?.length)) - Number(Boolean(stock[a.id]?.length)) || a.distanceKm - b.distanceKm)
   const inStockCount = allStores.filter((s) => stock[s.id]?.length).length
   const anyHours = allStores.some((s) => parseHours(s.hours))
+  const anyVerified = allStores.some((s) => verified[s.id])
   const filtered = stores.length !== allStores.length
   // A map area has a (possibly null) name from the server; "Near me" has none.
   const isMapArea = place?.city.near && place.city.area !== undefined
@@ -552,6 +591,12 @@ export default function App() {
                         now
                       </label>
                     )}
+                    {anyVerified && (
+                      <label className="toggle">
+                        <input type="checkbox" checked={verifiedOnly} onChange={(e) => setVerifiedOnly(e.target.checked)} />{' '}
+                        Verified on Discogs
+                      </label>
+                    )}
                   </div>
                 )}
               </div>
@@ -564,6 +609,7 @@ export default function App() {
                     onClick={() => {
                       setRadiusMiles(null)
                       setOpenOnly(false)
+                      setVerifiedOnly(false)
                     }}
                   >
                     Show all
@@ -615,6 +661,7 @@ export default function App() {
                       timezone={timezone}
                       now={now}
                       stock={stock[s.id]}
+                      verified={verified[s.id]}
                       selected={s.id === selectedId}
                       onSelect={() => setSelectedId(s.id)}
                     />

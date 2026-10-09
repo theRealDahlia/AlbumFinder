@@ -23,3 +23,7 @@ export const suggest = (field, q, artist, signal) =>
 export const findStock = (album, artist, signal) =>
   request(`/api/stock?${new URLSearchParams({ album, artist })}`, signal).then((d) => d.stock)
 
+
+/** Which of these shops are confirmed as vinyl sellers on Discogs: { verified: { [storeId]: { seller, url } }, pending }. */
+export const findVerification = (ids, signal) =>
+  request(`/api/verification?${new URLSearchParams({ ids: ids.join(',') })}`, signal)

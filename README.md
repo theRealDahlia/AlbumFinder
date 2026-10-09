@@ -65,6 +65,12 @@ npm run discogs -- unlink node/123
 
 The shop id is in the "Fix details" link on the shop's card (`openstreetmap.org/node/123`). Nothing ties an OpenStreetMap shop to a Discogs account automatically, so check that the seller really is that shop before linking it.
 
+## Verified vinyl sellers
+
+OpenStreetMap says what a shop is tagged as, not what it sells. So once a shop is found there, the server cross-checks it against Discogs in the background. Discogs can't search for sellers, so it guesses usernames from the shop's name and website, and accepts a profile only if it backs up what OpenStreetMap says: the profile lists the shop's website, or it has the shop's name and is in the shop's city. The seller must also have vinyl among its newest 100 listings. Shops that pass get a **Sells vinyl · Discogs** badge linking to the seller page, and a **Verified on Discogs** filter.
+
+A shop without the badge isn't necessarily fake: plenty of real record shops don't sell on Discogs. Checks run one at a time (Discogs allows 25 requests a minute, 60 with `DISCOGS_TOKEN`), so a large city takes a few minutes to fill in; answers are kept in `data/discogs-verified.json` for 30 days (14 for shops that didn't match) and `GET /api/verification?ids=node/1,way/2` reports them. Only shops the server itself returned can be checked.
+
 ## Keeping it fast
 
 - **Store lists** are cached on disk for a week, refreshed in the background before they go stale, and served stale if OpenStreetMap's servers are down. Warm the cache for popular cities ahead of time (or your own list) with:
@@ -98,6 +104,7 @@ npm run test:ui        # the React app in a simulated browser (Vitest + Testing 
 - `server/api.js`: the HTTP API; `server/index.js`: the production server and background jobs
 - `server/musicbrainz.js`, `stores.js`, `covers.js`: albums, stores, covers
 - `server/discogs.js`, `stock.js`: stock from Discogs, and matching it to searches
+- `server/verify.js`: confirming shops sell vinyl by finding their Discogs seller account
 - `server/shared.js`: caching, rate limits and pacing (memory or Redis); `server/health.js`: monitoring
 - `src/App.jsx`: the search page; `src/StoreCard.jsx`: a shop's card; `src/hours.js`: opening hours
 - `scripts/`: `prefetch` and `discogs` commands

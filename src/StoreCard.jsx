@@ -15,7 +15,7 @@ function price({ price, currency }) {
   }
 }
 
-export default function StoreCard({ store, timezone, now, stock = [], selected, onSelect }) {
+export default function StoreCard({ store, timezone, now, stock = [], verified, selected, onSelect }) {
   const card = useRef(null)
   // Stores are often picked on the map; bring the card into view ("nearest" leaves it alone if visible).
   useEffect(() => {
@@ -47,6 +47,19 @@ export default function StoreCard({ store, timezone, now, stock = [], selected, 
           {status.open
             ? `Open now${status.until ? ` · until ${status.until}` : ''}`
             : `Closed${status.opens ? ` · opens ${status.opens}` : ' now'}`}
+        </p>
+      )}
+
+      {verified && (
+        <p className="verified" onClick={(e) => e.stopPropagation()}>
+          <a
+            href={verified.url}
+            target="_blank"
+            rel="noreferrer"
+            title="This shop has a Discogs seller account with vinyl for sale, matched to its OpenStreetMap listing."
+          >
+            Sells vinyl · Discogs
+          </a>
         </p>
       )}
 

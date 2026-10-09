@@ -10,6 +10,7 @@ vi.mock('./api.js', () => ({
   findStoresNear: vi.fn(),
   suggest: vi.fn(),
   findStock: vi.fn(),
+  findVerification: vi.fn(),
 }))
 // Leaflet needs real layout; a stand-in shows what the map was given, and keeps its props so
 // tests can act as the map would (e.g. call onMove as if someone dragged it).
@@ -90,6 +91,7 @@ beforeEach(() => {
   api.findStoresNear.mockResolvedValue({ ...PORTLAND, city: { ...PORTLAND.city, name: 'your location', near: true } })
   api.suggest.mockResolvedValue([])
   api.findStock.mockResolvedValue({})
+  api.findVerification.mockResolvedValue({ verified: {}, pending: 0 })
   user = userEvent.setup()
 })
 afterEach(cleanup)
@@ -614,6 +616,92 @@ describe('stock', () => {
 
   test('a stock lookup failure leaves the store list as it is', async () => {
     api.findStock.mockRejectedValue(new Error('down'))
+    render(<App />)
+    await search({ album: 'Rumours', city: 'Portland' })
+    expect(await screen.findByText('2 record stores in Portland')).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+describe('vinyl sellers verified on Discogs', () => {
+  const SELLER = { seller: 'NearRecords', url: 'https://www.discogs.com/seller/NearRecords/profile' }
+
+  test('a verified shop gets a badge linking to its Discogs seller page; others get none', async () => {
+    api.findVerification.mockResolvedValue({ verified: { 'node/1': SELLER }, pending: 0 })
+    render(<App />)
+    await search({ album: 'Rumours', city: 'Portland' })
+    const badge = await screen.findByRole('link', { name: 'Sells vinyl · Discogs' })
+    expect(badge.getAttribute('href')).toBe(SELLER.url)
+    expect(screen.getAllByRole('link', { name: 'Sells vinyl · Discogs' })).toHaveLength(1)
+    expect(within(badge.closest('li')).getByRole('button', { name: 'Near Records' })).toBeTruthy()
+  })
+
+  test('asks for the nearest shops first', async () => {
+    render(<App />)
+    await search({ album: 'Rumours', city: 'Portland' })
+    await screen.findByText('2 record stores in Portland')
+    await waitFor(() => expect(api.findVerification).toHaveBeenCalled())
+    expect(api.findVerification).toHaveBeenCalledWith(['node/1', 'node/2'], expect.any(AbortSignal))
+  })
+
+  test('the filter appears once a shop is verified, and narrows the list to those shops', async () => {
+    api.findVerification.mockResolvedValue({ verified: { 'node/1': SELLER }, pending: 0 })
+    render(<App />)
+    await search({ album: 'Rumours', city: 'Portland' })
+    await user.click(await screen.findByRole('checkbox', { name: 'Verified on Discogs' }))
+    expect(screen.getAllByRole('button', { name: /Records$/ }).map((b) => b.textContent)).toEqual(['Near Records'])
+    expect(screen.getByText('Showing 1 of 2.')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Show all' }))
+    expect(screen.getAllByRole('button', { name: /Records$/ })).toHaveLength(2)
+    expect(screen.getByRole('checkbox', { name: 'Verified on Discogs' }).checked).toBe(false)
+  })
+
+  test('no filter is offered when no shop is verified', async () => {
+    render(<App />)
+    await search({ album: 'Rumours', city: 'Portland' })
+    await screen.findByText('2 record stores in Portland')
+    expect(screen.queryByRole('checkbox', { name: 'Verified on Discogs' })).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Sells vinyl · Discogs' })).toBeNull()
+  })
+
+  test('keeps asking while shops are still being checked, then stops', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      history.replaceState(null, '', '/?album=Rumours&city=Portland')
+      api.findVerification
+        .mockResolvedValueOnce({ verified: {}, pending: 2 })
+        .mockResolvedValueOnce({ verified: { 'node/1': SELLER }, pending: 1 })
+        .mockResolvedValue({ verified: { 'node/1': SELLER }, pending: 0 })
+      render(<App />)
+      await screen.findByText('2 record stores in Portland')
+      await waitFor(() => expect(api.findVerification).toHaveBeenCalledTimes(1))
+      expect(screen.queryByRole('link', { name: 'Sells vinyl · Discogs' })).toBeNull()
+      await act(() => vi.advanceTimersByTimeAsync(15000))
+      expect(await screen.findByRole('link', { name: 'Sells vinyl · Discogs' })).toBeTruthy()
+      await act(() => vi.advanceTimersByTimeAsync(15000))
+      expect(api.findVerification).toHaveBeenCalledTimes(3)
+      await act(() => vi.advanceTimersByTimeAsync(60000))
+      expect(api.findVerification).toHaveBeenCalledTimes(3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('badges stay when the map moves to a new area', async () => {
+    const MOVED = { city: { ...PORTLAND.city, near: true, area: 'Elsewhere', radiusKm: 5 }, stores: [store(1, 'Near Records', 0.4), store(9, 'New Records', 1)] }
+    api.findVerification.mockResolvedValue({ verified: { 'node/1': SELLER }, pending: 0 })
+    api.findStoresNear.mockResolvedValue(MOVED)
+    render(<App />)
+    await search({ album: 'Rumours', city: 'Portland' })
+    await screen.findByRole('link', { name: 'Sells vinyl · Discogs' })
+    api.findVerification.mockResolvedValue({ verified: {}, pending: 0 })
+    await act(async () => map.props.onMove({ lat: 45.6, lon: -122.7, radiusKm: 5 }))
+    await screen.findByRole('button', { name: 'New Records' })
+    expect(screen.getByRole('link', { name: 'Sells vinyl · Discogs' })).toBeTruthy()
+  })
+
+  test('a failed check leaves the store list as it is', async () => {
+    api.findVerification.mockRejectedValue(new Error('down'))
     render(<App />)
     await search({ album: 'Rumours', city: 'Portland' })
     expect(await screen.findByText('2 record stores in Portland')).toBeTruthy()
