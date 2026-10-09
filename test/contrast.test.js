@@ -37,6 +37,7 @@ const PAIRS = [
   ['ok', 'ok-bg'], // "In stock" heading and links
   ['text', 'ok-bg'], // stock listings
   ['muted', 'ok-bg'], // format and condition
+  ['text', 'surface-2'], // other works by the artist: listings and links
 ]
 
 for (const [name, theme] of [['light', light], ['dark', dark]]) {

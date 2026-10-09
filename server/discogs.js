@@ -1,7 +1,7 @@
-// Stock from shops that sell on Discogs. A shop is linked to its Discogs seller account
-// by hand (`npm run discogs -- link …`), since nothing ties an OpenStreetMap shop to a
-// Discogs account automatically. Linked inventories are synced daily and searched locally:
-// Discogs' API can list a seller's inventory but can't search it.
+// Stock from shops that sell on Discogs. A shop's seller account is either confirmed by
+// server/verify.js (which matches OpenStreetMap shops to Discogs sellers) or linked by hand
+// (`npm run discogs -- link …`); a hand-made link wins. Inventories are synced daily and
+// searched locally: Discogs' API can list a seller's inventory but can't search it.
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -60,7 +60,8 @@ export async function unlinkSeller(storeId) {
 
 // ---------- syncing inventories ----------
 
-async function discogs(path) {
+/** One Discogs API call, paced to its rate limit. A refusal carries Discogs' own status as `upstream`. */
+export async function discogs(path) {
   await pace('discogs', interval())
   return record('discogs', async () => {
     const res = await fetch(`https://api.discogs.com${path}`, {
@@ -72,7 +73,7 @@ async function discogs(path) {
       signal: AbortSignal.timeout(20000),
     })
     if (res.status === 404) throw new HttpError(404, 'No such Discogs seller')
-    if (!res.ok) throw new HttpError(502, `Discogs returned ${res.status}`)
+    if (!res.ok) throw Object.assign(new HttpError(502, `Discogs returned ${res.status}`), { upstream: res.status })
     return res.json()
   })
 }
@@ -122,9 +123,19 @@ export async function syncSeller(seller, { log = () => {} } = {}) {
   return inventory
 }
 
-/** Sync every linked seller whose inventory is more than a day old (or `force`). */
-export async function syncAll({ force = false, log = () => {} } = {}) {
-  const sellers = [...new Set(Object.values(await readLinks()).map((l) => l.seller))]
+/**
+ * Every shop with a Discogs seller, as { storeId: seller }: those confirmed by verification
+ * (`verified`, also { storeId: seller }) and the hand-made links.
+ */
+async function sellersFor(verified = {}) {
+  const sellers = { ...verified }
+  for (const [storeId, { seller }] of Object.entries(await readLinks())) sellers[storeId] = seller
+  return sellers
+}
+
+/** Sync every seller whose inventory is more than a day old (or `force`). */
+export async function syncAll({ force = false, log = () => {}, verified = {} } = {}) {
+  const sellers = [...new Set(Object.values(await sellersFor(verified)))]
   const results = []
   for (const seller of sellers) {
     const saved = await loadInventory(seller)
@@ -144,14 +155,51 @@ export async function syncAll({ force = false, log = () => {} } = {}) {
 
 // ---------- searching ----------
 
-/** Matching vinyl listings at linked shops: { [storeId]: items }. */
-export async function discogsStock(query, { perStore = 5 } = {}) {
-  const stock = {}
-  for (const [storeId, { seller }] of Object.entries(await readLinks())) {
+let syncing = false
+let retryAt = 0
+const RETRY_AFTER_FAILURE_MS = 5 * 60 * 1000
+
+/**
+ * Start syncing sellers that have no inventory yet (or an old one), unless a sync is already
+ * running or the last one had failures a moment ago. Doesn't wait: searches keep working
+ * while a big inventory downloads.
+ */
+export function syncInBackground(verified = {}) {
+  if (syncing || Date.now() < retryAt) return
+  syncing = true
+  syncAll({ verified })
+    .then((results) => {
+      if (results.some((r) => r.status === 'failed')) retryAt = Date.now() + RETRY_AFTER_FAILURE_MS
+    })
+    .catch((err) => console.warn('[discogs-sync]', err.message))
+    .finally(() => {
+      syncing = false
+    })
+}
+
+/**
+ * What shops with a Discogs seller have for a search, from their saved inventories:
+ *   stock    { storeId: items }  the album (or, with no album, records by the artist)
+ *   others   { storeId: items }  not the album, but other records by the artist
+ *   checked  [storeId]           shops whose inventory was searched; one in neither map has nothing
+ *   pending  how many shops have no inventory yet (still downloading), so the answer is incomplete
+ */
+export async function stockReport(query, { verified = {}, perStore = 5 } = {}) {
+  const report = { stock: {}, others: {}, checked: [], pending: 0 }
+  for (const [storeId, seller] of Object.entries(await sellersFor(verified))) {
     const inventory = await loadInventory(seller)
-    if (!inventory) continue
+    if (!inventory) {
+      report.pending++
+      continue
+    }
+    report.checked.push(storeId)
     const matches = inventory.items.filter((item) => listingMatches(item, query)).slice(0, perStore)
-    if (matches.length) stock[storeId] = matches.map((item) => ({ source: 'discogs', ...item }))
+    if (matches.length) {
+      report.stock[storeId] = matches.map((item) => ({ source: 'discogs', ...item }))
+    } else if (query.album && query.artist) {
+      const others = inventory.items.filter((item) => listingMatches(item, { artist: query.artist })).slice(0, perStore)
+      if (others.length) report.others[storeId] = others.map((item) => ({ source: 'discogs', ...item }))
+    }
   }
-  return stock
+  return report
 }

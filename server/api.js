@@ -5,7 +5,8 @@
 //   GET /api/stores?lat=&lon=[&radius=]  record stores near a location (with a radius: a map area)
 //   GET /api/suggest?field=&q=&artist=  search-as-you-type suggestions
 //   GET /api/cover/<release-group id>  album cover image (cached copy of Cover Art Archive's)
-//   GET /api/stock?album=&artist=       what shops linked to Discogs have in stock
+//   GET /api/stock?album=&artist=       what verified or linked shops have: the album, other records by the artist, or neither
+//   GET /api/verification?ids=a,b       which shops are confirmed as vinyl sellers on Discogs
 //   GET /api/health                     monitoring
 
 import { HttpError } from './util.js'
@@ -14,7 +15,8 @@ import { searchAlbums, suggest } from './musicbrainz.js'
 import { findStores, findStoresNear, suggestCities } from './stores.js'
 import { countRequest, healthReport } from './health.js'
 import { getCover } from './covers.js'
-import { discogsStock } from './discogs.js'
+import { stockReport, syncInBackground } from './discogs.js'
+import { rememberStores, verificationFor, verifiedSellers } from './verify.js'
 
 export { searchAlbums, suggest } from './musicbrainz.js'
 export { findStores, findStoresNear, placeQuery, prefetchCities, suggestCities } from './stores.js'
@@ -57,11 +59,13 @@ async function checkLimit(req, res, bucket) {
   throw new HttpError(429, `Too many requests. Please wait ${wait} seconds and try again.`)
 }
 
-/** What shops linked to Discogs have in stock that matches a search. */
+/** What shops with a Discogs seller (verified or linked) have in stock for a search. */
 async function stock(p) {
   const query = { album: (p.get('album') || '').trim(), artist: (p.get('artist') || '').trim() }
   if (!query.album && !query.artist) throw new HttpError(400, 'Enter an album or an artist')
-  return { stock: await discogsStock(query) }
+  const verified = await verifiedSellers()
+  syncInBackground(verified) // inventories of newly verified shops download while the page asks again
+  return stockReport(query, { verified })
 }
 
 const ROUTES = {
@@ -72,10 +76,13 @@ const ROUTES = {
   },
   'GET /api/stores': {
     bucket: 'search',
-    handle: (p) =>
-      p.has('lat')
+    handle: async (p) => {
+      const found = await (p.has('lat')
         ? findStoresNear(p.get('lat'), p.get('lon'), p.get('radius'))
-        : findStores(p.get('city') || '', p.get('state') || ''),
+        : findStores(p.get('city') || '', p.get('state') || ''))
+      rememberStores(found.stores) // so they can be checked on Discogs afterwards
+      return found
+    },
   },
   'GET /api/suggest': {
     bucket: 'suggest',
@@ -87,6 +94,7 @@ const ROUTES = {
     }),
   },
   'GET /api/stock': { bucket: 'other', handle: stock },
+  'GET /api/verification': { bucket: 'other', handle: (p) => verificationFor((p.get('ids') || '').split(',').filter(Boolean)) },
   'GET /api/health': {
     bucket: 'other',
     handle: async () => {

@@ -7,7 +7,13 @@ import { json, html, mockFetch, loadApi } from './helpers.js'
 const { api, dir } = await loadApi()
 
 // A store list cached long ago, used to check the stale fallback.
-const STALE = { city: { name: 'Staleville', lat: 1, lon: 1 }, stores: [{ id: 'node/1', name: 'Old Shop' }] }
+const STALE = {
+  city: { name: 'Staleville', lat: 1, lon: 1 },
+  stores: [
+    { id: 'node/1', name: 'Old Shop', hours: 'Mo-Fr 10:00-17:00' },
+    { id: 'node/2', name: 'Saved Before Hours Were Required', hours: null },
+  ],
+}
 const DAY = 86400000
 await writeFile(
   join(dir, 'stores-cache.json'),
@@ -42,25 +48,31 @@ const ELEMENTS = [
       opening_hours: 'Mo-Su 11:00-18:00',
     },
   },
-  { type: 'way', id: 2, center: { lat: 45.5, lon: -122.6 }, tags: { name: 'Crossroads', shop: 'records', vinyl: 'only' } },
+  { type: 'way', id: 2, center: { lat: 45.5, lon: -122.6 }, tags: { name: 'Crossroads', shop: 'records', vinyl: 'only', opening_hours: 'Mo-Sa 10:00-18:00' } },
   { type: 'node', id: 3, lat: 45.5, lon: -122.6, tags: { shop: 'music' } }, // no name
-  { type: 'node', id: 4, lat: 45.5, lon: -122.6, tags: { name: 'Portland Guitar Shop', shop: 'music' } },
-  { type: 'node', id: 5, lat: 45.5, lon: -122.6, tags: { name: 'Bad URL', shop: 'music', website: 'javascript:alert(1)' } },
+  { type: 'node', id: 4, lat: 45.5, lon: -122.6, tags: { name: 'Portland Guitar Shop', shop: 'music', opening_hours: 'Mo-Sa 10:00-18:00' } },
+  { type: 'node', id: 5, lat: 45.5, lon: -122.6, tags: { name: 'Bad URL', shop: 'music', website: 'javascript:alert(1)', opening_hours: 'Mo-Sa 10:00-18:00' } },
+  { type: 'node', id: 6, lat: 45.5, lon: -122.6, tags: { name: 'No Hours Records', shop: 'records' } }, // no opening hours
+  { type: 'node', id: 9, lat: 45.5, lon: -122.6, tags: { name: 'Blank Hours Records', shop: 'records', opening_hours: '  ' } },
 ]
 
 const overpassOk = () => json({ elements: ELEMENTS })
 
 test('turns Overpass elements into store records', async () => {
-  mockFetch({ 'nominatim.openstreetmap.org': () => json([portland]), 'overpass-api.de': overpassOk })
+  const calls = mockFetch({ 'nominatim.openstreetmap.org': () => json([portland]), 'overpass-api.de': overpassOk })
   const { city, stores } = await api.findStores('Portland, OR')
   assert.equal(city.name, portland.display_name)
+  const query = calls.find((c) => c.url.host === 'overpass-api.de').init.body.get('data')
+  assert.equal(query.match(/\["opening_hours"\]/g).length, 4, 'every kind of shop is asked for with its opening hours')
   assert.deepEqual(
     stores.map((s) => s.id),
     ['node/1', 'way/2', 'node/5'],
-    'unnamed shops and instrument shops are dropped',
+    'unnamed shops, instrument shops and shops without opening hours are dropped',
   )
   const [everyday, crossroads, bad] = stores
   assert.equal(everyday.address, '1313 W Burnside St, Portland')
+  assert.equal(everyday.city, 'Portland')
+  assert.equal(crossroads.city, null)
   assert.equal(everyday.website, 'https://everydaymusic.com')
   assert.equal(everyday.phone, '+1 503 274 0961')
   assert.equal(everyday.hours, 'Mo-Su 11:00-18:00')
@@ -68,7 +80,7 @@ test('turns Overpass elements into store records', async () => {
   assert.deepEqual([crossroads.lat, crossroads.lon], [45.5, -122.6])
   assert.deepEqual(
     Object.keys(everyday).sort(),
-    ['address', 'distanceKm', 'hours', 'id', 'lat', 'lon', 'name', 'phone', 'website'],
+    ['address', 'city', 'distanceKm', 'hours', 'id', 'lat', 'lon', 'name', 'phone', 'website'],
     'only fields the app uses',
   )
   assert.ok(bad.website.startsWith('https://'), 'non-http URLs are never passed through as-is')
@@ -136,7 +148,7 @@ test('serves a stale cached list when every mirror is down', { timeout: 30000 },
     'overpass.kumi.systems': () => html(500),
   })
   const stale = await api.findStores('Staleville')
-  assert.deepEqual(stale.stores, STALE.stores)
+  assert.deepEqual(stale.stores, [STALE.stores[0]], 'a list saved before hours were required loses the shops without them')
   assert.equal(stale.city.name, 'Staleville')
   assert.equal(typeof stale.city.timezone, 'string', 'lists saved before timezones existed get one added')
 })
@@ -179,8 +191,8 @@ test('stores near a location: rounded to ~1 km, within 15 km, with the local tim
     'overpass-api.de': () =>
       json({
         elements: [
-          { type: 'node', id: 7, lat: 45.523, lon: -122.676, tags: { name: 'Close Records', shop: 'music' } },
-          { type: 'node', id: 8, lat: 45.9, lon: -122.676, tags: { name: 'Too Far Records', shop: 'music' } },
+          { type: 'node', id: 7, lat: 45.523, lon: -122.676, tags: { name: 'Close Records', shop: 'music', opening_hours: 'Mo-Sa 10:00-18:00' } },
+          { type: 'node', id: 8, lat: 45.9, lon: -122.676, tags: { name: 'Too Far Records', shop: 'music', opening_hours: 'Mo-Sa 10:00-18:00' } },
         ],
       }),
   })
@@ -255,9 +267,9 @@ const reverse = (address) => () => json({ address })
 const londonStores = () =>
   json({
     elements: [
-      { type: 'node', id: 21, lat: 51.5401, lon: -0.1401, tags: { name: 'Two Doors Down', shop: 'music' } }, // ~0.0 km
-      { type: 'node', id: 22, lat: 51.585, lon: -0.14, tags: { name: 'Five Km North', shop: 'music' } }, // ~5 km
-      { type: 'node', id: 23, lat: 51.63, lon: -0.14, tags: { name: 'Ten Km North', shop: 'music' } }, // ~10 km
+      { type: 'node', id: 21, lat: 51.5401, lon: -0.1401, tags: { name: 'Two Doors Down', shop: 'music', opening_hours: 'Mo-Sa 10:00-18:00' } }, // ~0.0 km
+      { type: 'node', id: 22, lat: 51.585, lon: -0.14, tags: { name: 'Five Km North', shop: 'music', opening_hours: 'Mo-Sa 10:00-18:00' } }, // ~5 km
+      { type: 'node', id: 23, lat: 51.63, lon: -0.14, tags: { name: 'Ten Km North', shop: 'music', opening_hours: 'Mo-Sa 10:00-18:00' } }, // ~10 km
     ],
   })
 

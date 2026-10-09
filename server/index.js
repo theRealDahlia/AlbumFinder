@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { apiMiddleware } from './api.js'
 import { refreshAgingCities } from './stores.js'
 import { syncAll } from './discogs.js'
+import { verifiedSellers } from './verify.js'
 
 const DIST = fileURLToPath(new URL('../dist', import.meta.url))
 const PORT = Number(process.env.PORT) || 3000
@@ -82,10 +83,11 @@ createServer((req, res) => {
 // so searches keep hitting fresh lists without anyone waiting for a lookup.
 setInterval(() => refreshAgingCities().catch((err) => console.warn('[refresh]', err.message)), 6 * HOUR).unref()
 
-// Discogs inventories of linked shops: shortly after starting, then daily (each sync skips
-// shops synced in the last day, so restarts don't re-download everything).
+// Discogs inventories of verified and linked shops: shortly after starting, then daily (each sync
+// skips shops synced in the last day, so restarts don't re-download everything).
 const syncDiscogs = () =>
-  syncAll()
+  verifiedSellers()
+    .then((verified) => syncAll({ verified }))
     .then((results) => results.filter((r) => r.status !== 'fresh').forEach((r) => console.log('[discogs]', JSON.stringify(r))))
     .catch((err) => console.warn('[discogs]', err.message))
 setTimeout(syncDiscogs, 60 * 1000).unref()

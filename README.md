@@ -44,17 +44,25 @@ docker run -p 3000:3000 -v album-finder-data:/data -e CONTACT=you@example.com al
 | Finding the city | [Nominatim](https://nominatim.org) (OpenStreetMap) |
 | Record stores, hours | [Overpass API](https://overpass-api.de) (OpenStreetMap) |
 | Suggestions as you type | MusicBrainz (albums, artists), [Photon](https://photon.komoot.io) (cities) |
-| Stock | The Discogs inventories of shops linked to a Discogs seller account |
+| Stock | The Discogs inventories of verified shops and shops linked to a Discogs seller account |
 
 **Searching.** Album and artist can be used together (that exact album), or alone: an artist on their own lists their most popular official albums to pick from. The optional **State** tells apart same-named cities. **Near me** uses the browser's location, rounded to about a kilometre. Each search is a step in the browser's history, and links are shareable: `/?album=Kind+of+Blue&artist=Miles+Davis&city=Berlin`, `/?artist=Radiohead&near=45.52,-122.68`.
 
 **Moving the map** searches where you look: drag or zoom it, and once it stops the store list updates to the shops around its center (named, e.g. "around Soho, City of Westminster", with a dashed outline of the area). The album stays as it is; only the shops are looked up again. The area matches what's visible, up to 25 km; zoomed out further than that, the map asks you to zoom in. Map moves update the link (`/?album=Rumours&near=51.513,-0.135&radius=5`) without adding Back steps.
 
-**Results.** Shops listing the album in stock come first, then the rest nearest first. Opening hours are shown in plain words with **Open now / Closed**, worked out in the shop's own timezone; filters narrow by distance or to shops open now. On phones, a List/Map switch keeps the map from crowding the list. Each card links to OpenStreetMap ("Fix details") so anyone can correct a shop's details, and "Missing a shop?" opens the map editor.
+**Results.** Only shops that list their opening hours on OpenStreetMap are shown: a shop with none can't be told from one that has closed, and the hours are what the Open now / Closed status needs. Shops listing the album in stock come first, then the rest nearest first. Opening hours are shown in plain words with **Open now / Closed**, worked out in the shop's own timezone; filters narrow by distance or to shops open now. On phones, a List/Map switch keeps the map from crowding the list. Each card links to OpenStreetMap ("Fix details") so anyone can correct a shop's details, and "Missing a shop?" opens the map editor.
 
 ## Stock
 
-There's no public source for what physical shops have on their shelves. Many shops also sell on Discogs, though, so a shop can be linked to its Discogs seller account; the server then syncs that inventory daily (searching it locally, since Discogs' API can't search an inventory) and shows matching vinyl as "In stock":
+There's no public source for what physical shops have on their shelves. Many shops also sell on Discogs, though, so the server uses the Discogs inventory of every shop that [verification](#verified-vinyl-sellers) confirms as a Discogs seller, plus any shop linked by hand. It syncs each inventory (and searches it locally, since Discogs' API can't search an inventory), then marks each of those shops for the search:
+
+- **In stock**: it lists the album (or, in an artist search, records by them), with price and condition.
+- **Sells other works by the artist**: no copy of the album, but other records by the artist, which are listed.
+- **No … in their Discogs stock**: it has neither. The card notes that Discogs may not show everything on the shelf and links to the shop's website to check (or says to call ahead, if it has none).
+
+A shop with no Discogs inventory (one that isn't verified) says nothing either way. Shops with the album come first, then those with other works by the artist. A big inventory takes a few minutes to download the first time, and the page asks again until it's there; after that each inventory is refreshed daily.
+
+To link a shop by hand (for one verification didn't find, or to override it):
 
 ```bash
 npm run discogs -- link node/123 sellername
@@ -63,7 +71,13 @@ npm run discogs -- list
 npm run discogs -- unlink node/123
 ```
 
-The shop id is in the "Fix details" link on the shop's card (`openstreetmap.org/node/123`). Nothing ties an OpenStreetMap shop to a Discogs account automatically, so check that the seller really is that shop before linking it.
+The shop id is in the "Fix details" link on the shop's card (`openstreetmap.org/node/123`). Nothing ties a shop to a Discogs account automatically except verification, so check that the seller really is that shop before linking it.
+
+## Verified vinyl sellers
+
+OpenStreetMap says what a shop is tagged as, not what it sells. So once a shop is found there, the server cross-checks it against Discogs in the background. Discogs can't search for sellers, so it guesses usernames from the shop's name and website, and accepts a profile only if it backs up what OpenStreetMap says: the profile lists the shop's website, or it has the shop's name and is in the shop's city. The seller must also have vinyl among its newest 100 listings. Shops that pass get a **Sells vinyl · Discogs** badge linking to the seller page (and their stock is searched, as above) and are listed under **Verified vinyl sellers**; every other shop is listed below them under **Other record stores**. Shops move up as they're confirmed, and the page says so while checks are still running.
+
+A shop in the second list isn't necessarily fake: plenty of real record shops don't sell on Discogs. Checks run one at a time (Discogs allows 25 requests a minute, 60 with `DISCOGS_TOKEN`), so a large city takes a few minutes to fill in; answers are kept in `data/discogs-verified.json` for 30 days (14 for shops that didn't match) and `GET /api/verification?ids=node/1,way/2` reports them. Only shops the server itself returned can be checked.
 
 ## Keeping it fast
 
@@ -98,6 +112,7 @@ npm run test:ui        # the React app in a simulated browser (Vitest + Testing 
 - `server/api.js`: the HTTP API; `server/index.js`: the production server and background jobs
 - `server/musicbrainz.js`, `stores.js`, `covers.js`: albums, stores, covers
 - `server/discogs.js`, `stock.js`: stock from Discogs, and matching it to searches
+- `server/verify.js`: confirming shops sell vinyl by finding their Discogs seller account
 - `server/shared.js`: caching, rate limits and pacing (memory or Redis); `server/health.js`: monitoring
 - `src/App.jsx`: the search page; `src/StoreCard.jsx`: a shop's card; `src/hours.js`: opening hours
 - `scripts/`: `prefetch` and `discogs` commands

@@ -158,6 +158,8 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; text-dec
 /* ---------- states ---------- */
 .notice { background: var(--surface-2); border-radius: 12px; padding: 14px 16px; margin: 16px 0; list-style: none; }
 .notice.error { background: var(--warn-bg); }
+.crash { max-width: 640px; margin: 0 auto; padding: 48px 16px; }
+.crash .notice p { margin: 0 0 8px; }
 /* ---------- loading ---------- */
 .loading { padding: 24px 0 8px; }
 .loading-status { display: flex; align-items: center; gap: 28px; margin: 8px 0 28px; }
@@ -304,6 +306,9 @@ button.link.back:hover { color: var(--text); text-decoration: underline; }
   .map { position: relative; top: 0; height: 300px; }
 }
 
+.store-groups { display: flex; flex-direction: column; gap: 20px; }
+.group-title { margin: 0 0 8px; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.group-title span { font-weight: 500; margin-left: 4px; }
 .stores { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .store {
   background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
@@ -312,7 +317,7 @@ button.link.back:hover { color: var(--text); text-decoration: underline; }
 .store:hover { border-color: var(--muted); }
 .store.selected { border-color: var(--text); }
 .store-top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
-.store h3 { margin: 0; font-size: 17px; }
+.store h4 { margin: 0; font-size: 17px; }
 .store-name { all: unset; cursor: pointer; font: inherit; }
 .store-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .distance { color: var(--muted); font-size: 13px; white-space: nowrap; }
@@ -339,6 +344,13 @@ button.link.back:hover { color: var(--text); text-decoration: underline; }
 .open-status.open { color: var(--ok); }
 .open-status.closed { color: var(--muted); }
 .store.has-stock { border-color: var(--ok); }
+.verified { margin: 6px 0 0; }
+.verified a {
+  display: inline-block; padding: 1px 10px; border-radius: 999px; background: var(--ok-bg); color: var(--ok);
+  font-size: 12px; font-weight: 700; text-decoration: none;
+}
+.verified a:hover { text-decoration: underline; }
+.verified a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .stock { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--ok-bg); cursor: default; }
 .stock-title { margin: 0 0 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ok); }
 .stock ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -347,6 +359,12 @@ button.link.back:hover { color: var(--text); text-decoration: underline; }
 .stock-price { font-weight: 700; }
 .stock-source { grid-column: 1 / -1; font-size: 12px; }
 .stock-source a { color: var(--ok); }
+/* Not the album, but other records by the artist: informative rather than a win, so not green. */
+.stock.other-works { background: var(--surface-2); }
+.other-works .stock-title { color: var(--muted); }
+.other-works .stock-source a { color: var(--text); }
+.no-stock { margin: 10px 0 0; font-size: 14px; color: var(--muted); }
+.no-stock a { color: var(--accent); font-weight: 600; }
 
 /* Phones: a List/Map switch instead of the map above a long list. */
 @media (max-width: 860px) {
@@ -359,6 +377,8 @@ button.link.back:hover { color: var(--text); text-decoration: underline; }
   .layout.view-map .map { height: 60vh; }
   /* On the map view, only the chosen shop's card shows, under the map. */
   .layout.view-map .stores > li:not(.selected):not(.map-hint) { display: none; }
+  .layout.view-map .group-title { display: none; }
+  .layout.view-map .store-groups { gap: 0; }
   .layout.view-map .map-hint { display: block; color: var(--muted); font-size: 14px; list-style: none; padding: 4px 0; }
 }
 

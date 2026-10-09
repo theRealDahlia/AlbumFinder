@@ -73,12 +73,29 @@ test('syncing reads every page, keeps vinyl only, and tidies artist names', asyn
   assert.deepEqual((await discogs.syncAll())[0].status, 'fresh', 'synced less than a day ago: skipped')
 })
 
-test('discogsStock finds matches at linked shops', async () => {
-  const stock = await discogs.discogsStock({ album: '1999', artist: 'Prince' })
-  assert.deepEqual(Object.keys(stock), ['node/1'])
-  assert.equal(stock['node/1'][0].source, 'discogs')
-  assert.equal(stock['node/1'][0].price, 35)
-  assert.deepEqual(await discogs.discogsStock({ album: 'Purple Rain', artist: 'Prince' }), {})
+test('the stock report finds the album at linked shops, and says what it searched', async () => {
+  const report = await discogs.stockReport({ album: '1999', artist: 'Prince' })
+  assert.deepEqual(Object.keys(report.stock), ['node/1'])
+  assert.equal(report.stock['node/1'][0].source, 'discogs')
+  assert.equal(report.stock['node/1'][0].price, 35)
+  assert.deepEqual(report.others, {})
+  assert.deepEqual(report.checked, ['node/1'])
+  assert.equal(report.pending, 0)
+})
+
+test('with the artist but not the album, a shop has other works by them; with neither, nothing', async () => {
+  const other = await discogs.stockReport({ album: 'Purple Rain', artist: 'Prince' })
+  assert.deepEqual(other.stock, {})
+  assert.deepEqual(Object.keys(other.others), ['node/1'])
+  assert.equal(other.others['node/1'][0].title, '1999')
+  assert.deepEqual(other.checked, ['node/1'], 'searched, so a shop in neither map really has nothing')
+
+  const none = await discogs.stockReport({ album: 'Kid A', artist: 'Radiohead' })
+  assert.deepEqual([none.stock, none.others, none.checked], [{}, {}, ['node/1']])
+
+  const artistOnly = await discogs.stockReport({ album: '', artist: 'Prince' })
+  assert.deepEqual(Object.keys(artistOnly.stock), ['node/1'], 'an artist search lists their records as stock')
+  assert.deepEqual(artistOnly.others, {})
 })
 
 // ---------- through the API ----------
