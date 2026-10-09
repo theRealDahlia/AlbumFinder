@@ -362,6 +362,7 @@ button.link.back:hover { color: var(--text); text-decoration: underline; }
 .other-works .stock-title { color: var(--muted); }
 .other-works .stock-source a { color: var(--text); }
 .no-stock { margin: 10px 0 0; font-size: 14px; color: var(--muted); }
+.no-stock a { color: var(--accent); font-weight: 600; }
 
 /* Phones: a List/Map switch instead of the map above a long list. */
 @media (max-width: 860px) {

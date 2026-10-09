@@ -102,7 +102,19 @@ export default function StoreCard({ store, timezone, now, stock = [], others = [
       {stock.length === 0 && others.length > 0 && (
         <StockList title={`Sells other works by ${wanted.artist}`} items={others} className="other-works" />
       )}
-      {stock.length === 0 && others.length === 0 && checked && <p className="no-stock">{noneListed(wanted)}</p>}
+      {stock.length === 0 && others.length === 0 && checked && (
+        <p className="no-stock" onClick={(e) => e.stopPropagation()}>
+          {noneListed(wanted)}. Their Discogs listings may not show everything on the shelf, so{' '}
+          {store.website ? (
+            <a href={store.website} target="_blank" rel="noreferrer">
+              check their website
+            </a>
+          ) : (
+            'call ahead to check'
+          )}
+          .
+        </p>
+      )}
 
       <dl className="details">
         {store.address && (

@@ -629,7 +629,7 @@ describe('what verified shops have for the search', () => {
   const item = (title, extra = {}) => ({ source: 'discogs', title, format: 'LP', ...extra })
   const FOUR = {
     ...PORTLAND,
-    stores: [store(1, 'Nearest Records', 0.1), store(2, 'Second Records', 1), store(3, 'Third Records', 2), store(4, 'Fourth Records', 3)],
+    stores: [store(1, 'Nearest Records', 0.1), { ...store(2, 'Second Records', 1), website: 'https://second.example' }, store(3, 'Third Records', 2), store(4, 'Fourth Records', 3)],
   }
   // 4 has the album, 3 only other Fleetwood Mac, 2 has neither, and 1 has no inventory to look in.
   const MIXED = report({
@@ -663,10 +663,30 @@ describe('what verified shops have for the search', () => {
     expect(third.queryByText('In stock')).toBeNull()
   })
 
-  test('a shop with neither the album nor the artist says that', async () => {
+  test('a shop with neither the album nor the artist says that, and to check its website', async () => {
     api.findStock.mockResolvedValue(MIXED)
     await searchRumours()
-    expect(await within(card('Second Records')).findByText('No Rumours or other records by Fleetwood Mac in their Discogs stock')).toBeTruthy()
+    const second = within(card('Second Records'))
+    const note = await second.findByText(/No Rumours or other records by Fleetwood Mac in their Discogs stock/)
+    expect(note.textContent).toMatch(/Their Discogs listings may not show everything on the shelf, so check their website\./)
+    expect(second.getByRole('link', { name: 'check their website' }).getAttribute('href')).toBe('https://second.example')
+  })
+
+  test('without a website, the note says to call ahead instead', async () => {
+    api.findStock.mockResolvedValue(report({ checked: ['node/1'] }))
+    await searchRumours()
+    const note = await within(card('Nearest Records')).findByText(/No Rumours or other records/)
+    expect(note.textContent).toMatch(/so call ahead to check\./)
+    expect(within(card('Nearest Records')).queryByRole('link', { name: 'check their website' })).toBeNull()
+  })
+
+  test('shops with the album or other works by the artist get no such note', async () => {
+    api.findStock.mockResolvedValue(MIXED)
+    await searchRumours()
+    await within(card('Fourth Records')).findByText('In stock')
+    for (const name of ['Fourth Records', 'Third Records', 'Nearest Records']) {
+      expect(within(card(name)).queryByText(/may not show everything/)).toBeNull()
+    }
   })
 
   test('a shop without an inventory to search says nothing either way', async () => {
@@ -701,7 +721,7 @@ describe('what verified shops have for the search', () => {
     api.findStock.mockResolvedValue(report({ checked: ['node/1'] }))
     render(<App />)
     await screen.findByRole('button', { name: 'Near Records' })
-    expect(await within(card('Near Records')).findByText('No records by Radiohead in their Discogs stock')).toBeTruthy()
+    expect(await within(card('Near Records')).findByText(/^No records by Radiohead in their Discogs stock\./)).toBeTruthy()
   })
 
   test('asks again while inventories are downloading, then stops', async () => {

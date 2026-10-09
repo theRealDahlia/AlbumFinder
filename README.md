@@ -58,7 +58,7 @@ There's no public source for what physical shops have on their shelves. Many sho
 
 - **In stock**: it lists the album (or, in an artist search, records by them), with price and condition.
 - **Sells other works by the artist**: no copy of the album, but other records by the artist, which are listed.
-- **No … in their Discogs stock**: it has neither.
+- **No … in their Discogs stock**: it has neither. The card notes that Discogs may not show everything on the shelf and links to the shop's website to check (or says to call ahead, if it has none).
 
 A shop with no Discogs inventory (one that isn't verified) says nothing either way. Shops with the album come first, then those with other works by the artist. A big inventory takes a few minutes to download the first time, and the page asks again until it's there; after that each inventory is refreshed daily.
 
