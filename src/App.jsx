@@ -347,7 +347,9 @@ export default function App() {
     const check = (attempt) =>
       api
         .findStock(stockTitle, stockArtist, request.signal)
-        .then(({ stock, others, checked, pending }) => {
+        .then((report) => {
+          // Fill in what an answer leaves out, so a server running older code can't blank the page.
+          const { stock = {}, others = {}, checked = [], pending = 0 } = report ?? {}
           setStockFor({ key: stockKey, stock, others, checked })
           setStockPending(pending > 0)
           if (pending && attempt < POLL_ATTEMPTS) timer = setTimeout(() => check(attempt + 1), POLL_EVERY_MS)

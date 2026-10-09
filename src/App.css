@@ -158,6 +158,8 @@ button.link { background: none; border: 0; padding: 0; cursor: pointer; text-dec
 /* ---------- states ---------- */
 .notice { background: var(--surface-2); border-radius: 12px; padding: 14px 16px; margin: 16px 0; list-style: none; }
 .notice.error { background: var(--warn-bg); }
+.crash { max-width: 640px; margin: 0 auto; padding: 48px 16px; }
+.crash .notice p { margin: 0 0 8px; }
 /* ---------- loading ---------- */
 .loading { padding: 24px 0 8px; }
 .loading-status { display: flex; align-items: center; gap: 28px; margin: 8px 0 28px; }

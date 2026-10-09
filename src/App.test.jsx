@@ -755,6 +755,24 @@ describe('what verified shops have for the search', () => {
   })
 })
 
+describe('a stock answer with parts missing', () => {
+  // A server still running older code answers with less (just { stock }, or the stock map itself).
+  test.each([
+    ['only the stock', { stock: { 'node/2': [{ source: 'discogs', title: 'Rumours', format: 'LP' }] } }],
+    ['nothing at all', {}],
+    ['no answer', undefined],
+    ['an older server\'s bare stock map', { 'node/2': [{ source: 'discogs', title: 'Rumours', format: 'LP' }] }],
+  ])('keeps the store list on screen with %s', async (_, answer) => {
+    api.findStock.mockResolvedValue(answer)
+    render(<App />)
+    await search({ album: 'Rumours', artist: 'Fleetwood Mac', city: 'Portland' })
+    expect(await screen.findByText('2 record stores in Portland')).toBeTruthy()
+    await waitFor(() => expect(api.findStock).toHaveBeenCalled())
+    expect(screen.getAllByRole('button', { name: /Records$/ })).toHaveLength(2)
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+})
+
 describe('a city with no shops listing their hours', () => {
   test('says so, and asks for the hours to be added', async () => {
     api.findStores.mockResolvedValue({ city: PORTLAND.city, stores: [] })
