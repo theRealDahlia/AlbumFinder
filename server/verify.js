@@ -160,6 +160,15 @@ function freshResult(store) {
   return Date.now() - saved.checkedAt < ttl ? saved : null
 }
 
+/** Shops confirmed as vinyl sellers, as { storeId: Discogs username }. */
+export async function verifiedSellers() {
+  await loadResults()
+  const confirmed = Object.entries(results).filter(
+    ([, r]) => r.status === 'verified' && Date.now() - r.checkedAt < VERIFIED_FRESH_MS,
+  )
+  return Object.fromEntries(confirmed.map(([storeId, r]) => [storeId, r.seller]))
+}
+
 // ---------- the background queue ----------
 
 // Shops the server has returned in searches. Only these can be checked, so a visitor can't
