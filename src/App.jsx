@@ -94,10 +94,10 @@ export default function App() {
   const [searched, setSearched] = useState(null)
   const [radiusMiles, setRadiusMiles] = useState(null)
   const [openOnly, setOpenOnly] = useState(false)
-  const [verifiedOnly, setVerifiedOnly] = useState(false)
   // Shops confirmed as vinyl sellers on Discogs: { [storeId]: { seller, url } }. Only grows, since it's
   // a fact about the shop, so moving the map doesn't make badges flicker.
   const [verified, setVerified] = useState({})
+  const [verifyPending, setVerifyPending] = useState(false) // some shops are still being checked
   const [view, setView] = useState('list') // phones show the list or the map
   const [stockFor, setStockFor] = useState({ key: null, stock: {} })
   const [now, setNow] = useState(() => new Date())
@@ -364,9 +364,10 @@ export default function App() {
         .findVerification(verifyKey.split(','), request.signal)
         .then(({ verified: found, pending }) => {
           setVerified((known) => ({ ...known, ...found }))
+          setVerifyPending(pending > 0)
           if (pending && attempt < VERIFY_ATTEMPTS) timer = setTimeout(() => check(attempt + 1), VERIFY_EVERY_MS)
         })
-        .catch(() => {}) // a bonus; the store list stands on its own
+        .catch(() => setVerifyPending(false)) // a bonus; the store list stands on its own
     check(1)
     return () => {
       request.abort()
@@ -401,11 +402,24 @@ export default function App() {
   const stores = allStores
     .filter((s) => radiusMiles == null || roundedMiles(s.distanceKm) <= radiusMiles)
     .filter((s) => !openOnly || openStatus(parseHours(s.hours), now, timezone)?.open)
-    .filter((s) => !verifiedOnly || verified[s.id])
     .sort((a, b) => Number(Boolean(stock[b.id]?.length)) - Number(Boolean(stock[a.id]?.length)) || a.distanceKm - b.distanceKm)
   const inStockCount = allStores.filter((s) => stock[s.id]?.length).length
   const anyHours = allStores.some((s) => parseHours(s.hours))
-  const anyVerified = allStores.some((s) => verified[s.id])
+  // Shops confirmed on Discogs are listed apart from the rest (each list keeps the stock-then-nearest order).
+  const card = (s) => (
+    <StoreCard
+      key={s.id}
+      store={s}
+      timezone={timezone}
+      now={now}
+      stock={stock[s.id]}
+      verified={verified[s.id]}
+      selected={s.id === selectedId}
+      onSelect={() => setSelectedId(s.id)}
+    />
+  )
+  const verifiedStores = stores.filter((s) => verified[s.id])
+  const otherStores = stores.filter((s) => !verified[s.id])
   const filtered = stores.length !== allStores.length
   // A map area has a (possibly null) name from the server; "Near me" has none.
   const isMapArea = place?.city.near && place.city.area !== undefined
@@ -568,6 +582,11 @@ export default function App() {
                       {album ? `whether they have ${album.title}` : `what they have by ${artistName}`}.
                     </p>
                   )}
+                  {verifyPending && (
+                    <p className="sub" role="status">
+                      Checking which shops sell vinyl on Discogs…
+                    </p>
+                  )}
                 </div>
                 {allStores.length > 0 && (
                   <div className="filters">
@@ -591,12 +610,6 @@ export default function App() {
                         now
                       </label>
                     )}
-                    {anyVerified && (
-                      <label className="toggle">
-                        <input type="checkbox" checked={verifiedOnly} onChange={(e) => setVerifiedOnly(e.target.checked)} />{' '}
-                        Verified on Discogs
-                      </label>
-                    )}
                   </div>
                 )}
               </div>
@@ -609,7 +622,6 @@ export default function App() {
                     onClick={() => {
                       setRadiusMiles(null)
                       setOpenOnly(false)
-                      setVerifiedOnly(false)
                     }}
                   >
                     Show all
@@ -638,35 +650,45 @@ export default function App() {
                   area={isMapArea ? { lat: place.city.lat, lon: place.city.lon, radiusKm: place.city.radiusKm } : null}
                   status={areaStatus}
                 />
-                <ul className="stores">
-                  {allStores.length === 0 && (
-                    <li className="notice">
-                      No record stores are mapped {where} on OpenStreetMap yet. Try a nearby larger city, or{' '}
-                      <a href={osmEditUrl} target="_blank" rel="noreferrer">
-                        add a shop you know
-                      </a>
-                      .
-                    </li>
+                <div className="store-groups">
+                  {(stores.length === 0 || (view === 'map' && !selectedId)) && (
+                    <ul className="stores">
+                      {allStores.length === 0 && (
+                        <li className="notice">
+                          No record stores are mapped {where} on OpenStreetMap yet. Try a nearby larger city, or{' '}
+                          <a href={osmEditUrl} target="_blank" rel="noreferrer">
+                            add a shop you know
+                          </a>
+                          .
+                        </li>
+                      )}
+                      {allStores.length > 0 && stores.length === 0 && (
+                        <li className="notice">No stores match these filters.</li>
+                      )}
+                      {view === 'map' && !selectedId && stores.length > 0 && (
+                        <li className="map-hint">Tap a shop on the map to see its details.</li>
+                      )}
+                    </ul>
                   )}
-                  {allStores.length > 0 && stores.length === 0 && (
-                    <li className="notice">No stores match these filters.</li>
+                  {verifiedStores.length > 0 && (
+                    <section>
+                      <h3 className="group-title">
+                        Verified vinyl sellers <span>{verifiedStores.length}</span>
+                      </h3>
+                      <ul className="stores">{verifiedStores.map(card)}</ul>
+                    </section>
                   )}
-                  {view === 'map' && !selectedId && stores.length > 0 && (
-                    <li className="map-hint">Tap a shop on the map to see its details.</li>
+                  {otherStores.length > 0 && (
+                    <section>
+                      {verifiedStores.length > 0 && (
+                        <h3 className="group-title">
+                          Other record stores <span>{otherStores.length}</span>
+                        </h3>
+                      )}
+                      <ul className="stores">{otherStores.map(card)}</ul>
+                    </section>
                   )}
-                  {stores.map((s) => (
-                    <StoreCard
-                      key={s.id}
-                      store={s}
-                      timezone={timezone}
-                      now={now}
-                      stock={stock[s.id]}
-                      verified={verified[s.id]}
-                      selected={s.id === selectedId}
-                      onSelect={() => setSelectedId(s.id)}
-                    />
-                  ))}
-                </ul>
+                </div>
               </div>
               {allStores.length > 0 && (
                 <p className="missing">

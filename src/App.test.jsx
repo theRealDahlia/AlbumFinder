@@ -644,24 +644,65 @@ describe('vinyl sellers verified on Discogs', () => {
     expect(api.findVerification).toHaveBeenCalledWith(['node/1', 'node/2'], expect.any(AbortSignal))
   })
 
-  test('the filter appears once a shop is verified, and narrows the list to those shops', async () => {
-    api.findVerification.mockResolvedValue({ verified: { 'node/1': SELLER }, pending: 0 })
+  const group = (name) => within(screen.getByRole('heading', { name }).closest('section'))
+  const names = (scope) => scope.getAllByRole('button', { name: /Records$/ }).map((b) => b.textContent)
+
+  test('verified shops are listed apart from the others, each list nearest first', async () => {
+    api.searchAlbums.mockResolvedValue([RUMOURS])
+    api.findStores.mockResolvedValue({
+      ...PORTLAND,
+      stores: [store(3, 'Middle Records', 2), store(2, 'Far Records', 5.2), store(1, 'Near Records', 0.4), store(4, 'Nearest Records', 0.1)],
+    })
+    api.findVerification.mockResolvedValue({ verified: { 'node/2': SELLER, 'node/3': SELLER }, pending: 0 })
     render(<App />)
     await search({ album: 'Rumours', city: 'Portland' })
-    await user.click(await screen.findByRole('checkbox', { name: 'Verified on Discogs' }))
-    expect(screen.getAllByRole('button', { name: /Records$/ }).map((b) => b.textContent)).toEqual(['Near Records'])
-    expect(screen.getByText('Showing 1 of 2.')).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: 'Show all' }))
-    expect(screen.getAllByRole('button', { name: /Records$/ })).toHaveLength(2)
-    expect(screen.getByRole('checkbox', { name: 'Verified on Discogs' }).checked).toBe(false)
+    await screen.findByRole('heading', { name: /Verified vinyl sellers/ })
+    expect(names(group(/Verified vinyl sellers/))).toEqual(['Middle Records', 'Far Records'])
+    expect(names(group(/Other record stores/))).toEqual(['Nearest Records', 'Near Records'])
+    expect(group(/Verified vinyl sellers/).getAllByRole('link', { name: 'Sells vinyl · Discogs' })).toHaveLength(2)
+    expect(group(/Other record stores/).queryByRole('link', { name: 'Sells vinyl · Discogs' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Verified vinyl sellers 2' })).toBeTruthy()
+    expect(screen.getByText('4 record stores in Portland')).toBeTruthy()
   })
 
-  test('no filter is offered when no shop is verified', async () => {
+  test('with nothing verified there is one list and no group headings', async () => {
     render(<App />)
     await search({ album: 'Rumours', city: 'Portland' })
     await screen.findByText('2 record stores in Portland')
-    expect(screen.queryByRole('checkbox', { name: 'Verified on Discogs' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: /Verified vinyl sellers|Other record stores/ })).toBeNull()
+    expect(screen.getAllByRole('list').filter((l) => l.classList.contains('stores'))).toHaveLength(1)
     expect(screen.queryByRole('link', { name: 'Sells vinyl · Discogs' })).toBeNull()
+  })
+
+  test('with every shop verified there is only the verified list', async () => {
+    api.findVerification.mockResolvedValue({ verified: { 'node/1': SELLER, 'node/2': SELLER }, pending: 0 })
+    render(<App />)
+    await search({ album: 'Rumours', city: 'Portland' })
+    await screen.findByRole('heading', { name: /Verified vinyl sellers/ })
+    expect(screen.queryByRole('heading', { name: /Other record stores/ })).toBeNull()
+    expect(names(group(/Verified vinyl sellers/))).toEqual(['Near Records', 'Far Records'])
+  })
+
+  test('the distance filter applies to both lists', async () => {
+    api.findVerification.mockResolvedValue({ verified: { 'node/2': SELLER }, pending: 0 })
+    render(<App />)
+    await search({ album: 'Rumours', city: 'Portland' })
+    await screen.findByRole('heading', { name: /Verified vinyl sellers/ })
+    await user.selectOptions(screen.getByLabelText('Distance'), '1')
+    expect(screen.queryByRole('heading', { name: /Verified vinyl sellers/ })).toBeNull()
+    expect(screen.getAllByRole('button', { name: /Records$/ }).map((b) => b.textContent)).toEqual(['Near Records'])
+  })
+
+  test('says so while shops are still being checked', async () => {
+    const check = controllable()
+    api.findVerification.mockImplementation(check.impl)
+    render(<App />)
+    await search({ album: 'Rumours', city: 'Portland' })
+    await screen.findByText('2 record stores in Portland')
+    expect(screen.queryByRole('status')).toBeNull()
+    await waitFor(() => expect(check.calls).toHaveLength(1))
+    await act(async () => check.calls[0].resolve({ verified: {}, pending: 2 }))
+    expect((await screen.findByRole('status')).textContent).toMatch(/Checking which shops sell vinyl on Discogs/)
   })
 
   test('keeps asking while shops are still being checked, then stops', async () => {

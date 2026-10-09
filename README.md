@@ -67,9 +67,9 @@ The shop id is in the "Fix details" link on the shop's card (`openstreetmap.org/
 
 ## Verified vinyl sellers
 
-OpenStreetMap says what a shop is tagged as, not what it sells. So once a shop is found there, the server cross-checks it against Discogs in the background. Discogs can't search for sellers, so it guesses usernames from the shop's name and website, and accepts a profile only if it backs up what OpenStreetMap says: the profile lists the shop's website, or it has the shop's name and is in the shop's city. The seller must also have vinyl among its newest 100 listings. Shops that pass get a **Sells vinyl · Discogs** badge linking to the seller page, and a **Verified on Discogs** filter.
+OpenStreetMap says what a shop is tagged as, not what it sells. So once a shop is found there, the server cross-checks it against Discogs in the background. Discogs can't search for sellers, so it guesses usernames from the shop's name and website, and accepts a profile only if it backs up what OpenStreetMap says: the profile lists the shop's website, or it has the shop's name and is in the shop's city. The seller must also have vinyl among its newest 100 listings. Shops that pass get a **Sells vinyl · Discogs** badge linking to the seller page and are listed under **Verified vinyl sellers**; every other shop is listed below them under **Other record stores**. Shops move up as they're confirmed, and the page says so while checks are still running.
 
-A shop without the badge isn't necessarily fake: plenty of real record shops don't sell on Discogs. Checks run one at a time (Discogs allows 25 requests a minute, 60 with `DISCOGS_TOKEN`), so a large city takes a few minutes to fill in; answers are kept in `data/discogs-verified.json` for 30 days (14 for shops that didn't match) and `GET /api/verification?ids=node/1,way/2` reports them. Only shops the server itself returned can be checked.
+A shop in the second list isn't necessarily fake: plenty of real record shops don't sell on Discogs. Checks run one at a time (Discogs allows 25 requests a minute, 60 with `DISCOGS_TOKEN`), so a large city takes a few minutes to fill in; answers are kept in `data/discogs-verified.json` for 30 days (14 for shops that didn't match) and `GET /api/verification?ids=node/1,way/2` reports them. Only shops the server itself returned can be checked.
 
 ## Keeping it fast
 

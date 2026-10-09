@@ -33,12 +33,12 @@ export default function StoreCard({ store, timezone, now, stock = [], verified, 
   return (
     <li ref={card} className={`store ${selected ? 'selected' : ''} ${stock.length ? 'has-stock' : ''}`} onClick={onSelect}>
       <div className="store-top">
-        <h3>
+        <h4>
           {/* Its click (mouse or keyboard) bubbles to the card's onClick, which selects the store. */}
           <button type="button" className="store-name" aria-pressed={selected}>
             {store.name}
           </button>
-        </h3>
+        </h4>
         <span className="distance">{formatMiles(store.distanceKm)}</span>
       </div>
 
