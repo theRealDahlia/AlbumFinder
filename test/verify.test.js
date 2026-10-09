@@ -1,11 +1,13 @@
-import { test } from 'node:test'
+import { test, after } from 'node:test'
 import assert from 'node:assert/strict'
+import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { json, loadApi, mockFetch } from './helpers.js'
 import { memoryBackend } from '../server/shared.js'
 
-const { dir } = await loadApi()
+const { api, dir } = await loadApi()
+const realFetch = globalThis.fetch
 const { setBackend } = await import('../server/shared.js')
 const verify = await import('../server/verify.js')
 // Discogs allows a request every 1-2.5 s; the tests shouldn't wait for that.
@@ -156,4 +158,38 @@ test('a failed check is not saved, is not retried straight away, and does not ho
   const checked = calls.length
   assert.deepEqual(await verify.verificationFor(['node/30']), { verified: {}, pending: 0 })
   assert.equal(calls.length, checked, 'cooling off')
+})
+
+// ---------- through the API ----------
+
+const server = createServer((req, res) => api.apiMiddleware(req, res, () => res.end()))
+await new Promise((r) => server.listen(0, r))
+const base = `http://localhost:${server.address().port}`
+after(() => server.close())
+
+test('GET /api/verification checks the shops a search returned, and only those', async () => {
+  mockFetch({
+    'nominatim.openstreetmap.org': () => json([{ addresstype: 'city', lat: '53.8', lon: '-1.55', display_name: 'Leeds', boundingbox: ['53.7', '53.9', '-1.7', '-1.4'] }]),
+    'overpass-api.de': () =>
+      json({ elements: [{ type: 'node', id: 77, lat: 53.8, lon: -1.55, tags: { name: 'Leeds Wax', shop: 'records', website: 'https://leedswax.example', 'addr:city': 'Leeds' } }] }),
+    'api.discogs.com/users/leedswax': () => json(profile({ username: 'LeedsWax', home_page: 'https://leedswax.example' })),
+    'api.discogs.com/users/LeedsWax/inventory': () => json({ listings: [lp()] }),
+  })
+  const ask = async (ids) => (await realFetch(`${base}/api/verification?ids=${ids}`)).json()
+
+  assert.deepEqual(await ask('node/77'), { verified: {}, pending: 0 }, 'not returned by a search yet: ignored')
+
+  const { stores } = await (await realFetch(`${base}/api/stores?city=Leeds`)).json()
+  assert.equal(stores[0].id, 'node/77')
+  let answer = await ask('node/77,node/404')
+  assert.equal(answer.pending, 1, 'the unknown id is ignored')
+  for (let i = 0; i < 100 && answer.pending; i++) {
+    await new Promise((r) => setTimeout(r, 10))
+    answer = await ask('node/77')
+  }
+  assert.deepEqual(answer, {
+    verified: { 'node/77': { seller: 'LeedsWax', url: 'https://www.discogs.com/seller/LeedsWax/profile' } },
+    pending: 0,
+  })
+  assert.equal((await realFetch(`${base}/api/verification`)).status, 200, 'no ids is fine')
 })

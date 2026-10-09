@@ -6,6 +6,7 @@
 //   GET /api/suggest?field=&q=&artist=  search-as-you-type suggestions
 //   GET /api/cover/<release-group id>  album cover image (cached copy of Cover Art Archive's)
 //   GET /api/stock?album=&artist=       what shops linked to Discogs have in stock
+//   GET /api/verification?ids=a,b       which shops are confirmed as vinyl sellers on Discogs
 //   GET /api/health                     monitoring
 
 import { HttpError } from './util.js'
@@ -15,6 +16,7 @@ import { findStores, findStoresNear, suggestCities } from './stores.js'
 import { countRequest, healthReport } from './health.js'
 import { getCover } from './covers.js'
 import { discogsStock } from './discogs.js'
+import { rememberStores, verificationFor } from './verify.js'
 
 export { searchAlbums, suggest } from './musicbrainz.js'
 export { findStores, findStoresNear, placeQuery, prefetchCities, suggestCities } from './stores.js'
@@ -72,10 +74,13 @@ const ROUTES = {
   },
   'GET /api/stores': {
     bucket: 'search',
-    handle: (p) =>
-      p.has('lat')
+    handle: async (p) => {
+      const found = await (p.has('lat')
         ? findStoresNear(p.get('lat'), p.get('lon'), p.get('radius'))
-        : findStores(p.get('city') || '', p.get('state') || ''),
+        : findStores(p.get('city') || '', p.get('state') || ''))
+      rememberStores(found.stores) // so they can be checked on Discogs afterwards
+      return found
+    },
   },
   'GET /api/suggest': {
     bucket: 'suggest',
@@ -87,6 +92,7 @@ const ROUTES = {
     }),
   },
   'GET /api/stock': { bucket: 'other', handle: stock },
+  'GET /api/verification': { bucket: 'other', handle: (p) => verificationFor((p.get('ids') || '').split(',').filter(Boolean)) },
   'GET /api/health': {
     bucket: 'other',
     handle: async () => {
