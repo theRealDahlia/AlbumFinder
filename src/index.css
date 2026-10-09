@@ -1,0 +1,44 @@
+:root {
+  --bg: #faf7f2;
+  --surface: #ffffff;
+  --surface-2: #f3eee6;
+  --text: #1c1917;
+  --muted: #6b635b;
+  --border: #e6dfd4;
+  --accent: #b8431a; /* dark enough for orange text and white-on-orange (4.5:1) */
+  --accent-ink: #ffffff;
+  --groove: #44403c;
+  --warn-bg: #fdf0e7;
+  --ok: #17703d; /* "Open now", "In stock" */
+  --ok-bg: #e5f5ec;
+  --shadow: 0 1px 2px rgb(28 25 23 / 0.06), 0 4px 16px rgb(28 25 23 / 0.06);
+  color-scheme: light dark;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141210;
+    --surface: #1d1a17;
+    --surface-2: #262220;
+    --text: #f2ede6;
+    --muted: #a69d93;
+    --border: #35302b;
+    --accent: #f06a3a;
+    --accent-ink: #1c1917; /* white on this orange is only 3:1 */
+    --groove: #57514b;
+    --warn-bg: #33221a;
+    --ok: #3ccf7d;
+    --ok-bg: #173324;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
+  }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); }
+a { color: inherit; }
+button, input, select { font: inherit; color: inherit; }

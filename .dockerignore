@@ -1,0 +1,8 @@
+node_modules
+dist
+data
+.git
+.claude
+test
+src/**/*.test.*
+*.log
