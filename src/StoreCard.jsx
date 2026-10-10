@@ -21,9 +21,9 @@ function noneListed({ album, artist }) {
   return album ? `No ${album} or other records by ${artist} in their Discogs stock` : `No records by ${artist} in their Discogs stock`
 }
 
-function StockList({ title, items, className = '' }) {
+function StockList({ title, items, className = '', inert = false }) {
   return (
-    <div className={`stock ${className}`} onClick={(e) => e.stopPropagation()}>
+    <div className={`stock ${className}`} onClick={(e) => e.stopPropagation()} inert={inert}>
       <p className="stock-title">{title}</p>
       <ul>
         {items.map((item, i) => (
@@ -50,7 +50,7 @@ function StockList({ title, items, className = '' }) {
   )
 }
 
-export default function StoreCard({ store, timezone, now, stock = [], others = [], checked = false, wanted = { album: '', artist: '' }, verified, selected, onSelect }) {
+export default function StoreCard({ store, timezone, now, stock = [], others = [], checked = false, wanted = { album: '', artist: '' }, verified, closed = false, selected, onSelect }) {
   const card = useRef(null)
   // Stores are often picked on the map; bring the card into view ("nearest" leaves it alone if visible).
   useEffect(() => {
@@ -66,11 +66,16 @@ export default function StoreCard({ store, timezone, now, stock = [], others = [
   )}`
 
   return (
-    <li ref={card} className={`store ${selected ? 'selected' : ''} ${stock.length ? 'has-stock' : ''}`} onClick={onSelect}>
+    <li
+      ref={card}
+      className={`store ${selected ? 'selected' : ''} ${stock.length ? 'has-stock' : ''} ${closed ? 'is-closed' : ''}`}
+      aria-disabled={closed || undefined}
+      onClick={closed ? undefined : onSelect}
+    >
       <div className="store-top">
         <h4>
           {/* Its click (mouse or keyboard) bubbles to the card's onClick, which selects the store. */}
-          <button type="button" className="store-name" aria-pressed={selected}>
+          <button type="button" className="store-name" aria-pressed={selected} disabled={closed}>
             {store.name}
           </button>
         </h4>
@@ -86,7 +91,7 @@ export default function StoreCard({ store, timezone, now, stock = [], others = [
       )}
 
       {verified && (
-        <p className="verified" onClick={(e) => e.stopPropagation()}>
+        <p className="verified" onClick={(e) => e.stopPropagation()} inert={closed}>
           <a
             href={verified.url}
             target="_blank"
@@ -98,12 +103,12 @@ export default function StoreCard({ store, timezone, now, stock = [], others = [
         </p>
       )}
 
-      {stock.length > 0 && <StockList title="In stock" items={stock} />}
+      {stock.length > 0 && <StockList title="In stock" items={stock} inert={closed} />}
       {stock.length === 0 && others.length > 0 && (
-        <StockList title={`Sells other works by ${wanted.artist}`} items={others} className="other-works" />
+        <StockList title={`Sells other works by ${wanted.artist}`} items={others} className="other-works" inert={closed} />
       )}
       {stock.length === 0 && others.length === 0 && checked && (
-        <p className="no-stock" onClick={(e) => e.stopPropagation()}>
+        <p className="no-stock" onClick={(e) => e.stopPropagation()} inert={closed}>
           {noneListed(wanted)}. Their Discogs listings may not show everything on the shelf, so{' '}
           {store.website ? (
             <a href={store.website} target="_blank" rel="noreferrer">
@@ -131,7 +136,7 @@ export default function StoreCard({ store, timezone, now, stock = [], others = [
         )}
       </dl>
 
-      <div className="links" onClick={(e) => e.stopPropagation()}>
+      <div className="links" onClick={(e) => e.stopPropagation()} inert={closed}>
         {store.phone && <a href={`tel:${store.phone.split(';')[0].replace(/\s/g, '')}`}>Call</a>}
         {store.website && (
           <a href={store.website} target="_blank" rel="noreferrer">

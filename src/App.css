@@ -344,6 +344,10 @@ button.link.back:hover { color: var(--text); text-decoration: underline; }
 .open-status.open { color: var(--ok); }
 .open-status.closed { color: var(--closed); }
 .store.has-stock { border-color: var(--ok); }
+/* A closed shop with "Open now" on: greyed out and not clickable, but the red Closed badge stays. */
+.store.is-closed { background: var(--surface-2); border-color: var(--border); cursor: not-allowed; }
+.store.is-closed > :not(.open-status) { opacity: 0.55; filter: grayscale(1); }
+.store.is-closed .store-name { cursor: not-allowed; }
 .verified { margin: 6px 0 0; }
 .verified a {
   display: inline-block; padding: 1px 10px; border-radius: 999px; background: var(--ok-bg); color: var(--ok);

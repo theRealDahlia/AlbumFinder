@@ -486,28 +486,99 @@ describe('filters and views', () => {
     expect(distances).toEqual(['0.2 mi', '3.2 mi']) // 0.4 km and 5.2 km
   })
 
-  test('"Open now" uses the store’s own timezone', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(new Date('2026-10-07T17:30:00Z')) // Wednesday 10:30 in Portland
-    api.findStores.mockResolvedValue({
+  describe('"Open now"', () => {
+    // Wednesday 10:30 in Portland: Weekday Records is open, Saturday Records (the nearer) is closed.
+    const WEDNESDAY = new Date('2026-10-07T17:30:00Z')
+    const SHOPS = {
       city: { ...PORTLAND.city, timezone: 'America/Los_Angeles' },
       stores: [
-        { ...store(1, 'Weekday Records', 0.4), hours: 'Mo-Fr 10:00-18:00' },
-        { ...store(2, 'Saturday Records', 0.9), hours: 'Sa 11:00-17:00' },
+        { ...store(2, 'Saturday Records', 0.4), hours: 'Sa 11:00-17:00' },
+        { ...store(1, 'Weekday Records', 0.9), hours: 'Mo-Fr 10:00-18:00' },
+        { ...store(3, 'Mystery Records', 1.5), hours: 'by appointment' },
       ],
-    })
-    try {
+    }
+    const card = (name) => screen.getByRole('button', { name }).closest('li')
+
+    async function searchAt(time) {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(time)
+      api.findStores.mockResolvedValue(SHOPS)
       render(<App />)
       await search({ album: 'Rumours', city: 'Portland' })
       await screen.findByRole('heading', { name: 'Rumours' })
+    }
+    afterEach(() => vi.useRealTimers())
+
+    test('uses the store’s own timezone', async () => {
+      await searchAt(WEDNESDAY)
       expect(screen.getByText('Open now · until 6:00pm')).toBeTruthy()
       expect(screen.getByText('Closed now')).toBeTruthy()
       expect(screen.getByText('Mon–Fri 10:00am–6:00pm · Sat–Sun closed')).toBeTruthy()
+    })
+
+    test('keeps closed shops listed, with the Closed badge, but greyed out and below the open ones', async () => {
+      await searchAt(WEDNESDAY)
+      expect(screen.getAllByRole('button', { name: /Records$/ }).map((b) => b.textContent)).toEqual([
+        'Saturday Records',
+        'Weekday Records',
+        'Mystery Records',
+      ])
       await user.click(screen.getByRole('checkbox', { name: /Open now/ }))
-      expect(screen.getAllByRole('button', { name: /Records$/ }).map((b) => b.textContent)).toEqual(['Weekday Records'])
-    } finally {
-      vi.useRealTimers()
-    }
+      expect(screen.getAllByRole('button', { name: /Records$/ }).map((b) => b.textContent)).toEqual([
+        'Weekday Records',
+        'Mystery Records',
+        'Saturday Records',
+      ])
+      const saturday = card('Saturday Records')
+      expect(saturday.className).toMatch('is-closed')
+      expect(saturday.getAttribute('aria-disabled')).toBe('true')
+      expect(within(saturday).getByText('Closed now').className).toMatch('closed')
+      expect(screen.getByText('Mon–Fri 10:00am–6:00pm · Sat–Sun closed')).toBeTruthy()
+    })
+
+    test('a closed shop can’t be clicked, focused or followed; the others still can', async () => {
+      await searchAt(WEDNESDAY)
+      await user.click(screen.getByRole('checkbox', { name: /Open now/ }))
+      const saturday = card('Saturday Records')
+      expect(within(saturday).getByRole('button', { name: 'Saturday Records' }).disabled).toBe(true)
+      expect(saturday.querySelector('.links').hasAttribute('inert')).toBe(true)
+      fireEvent.click(saturday)
+      expect(screen.getByTestId('map').dataset.selected).toBe('')
+      await user.click(screen.getByTestId('marker-node/1')) // the map still works for open shops
+      expect(screen.getByTestId('map').dataset.selected).toBe('node/1')
+
+      const weekday = card('Weekday Records')
+      expect(weekday.getAttribute('aria-disabled')).toBeNull()
+      expect(within(weekday).getByRole('button', { name: 'Weekday Records' }).disabled).toBe(false)
+      expect(weekday.querySelector('.links').hasAttribute('inert')).toBe(false)
+      fireEvent.click(weekday)
+      expect(screen.getByTestId('map').dataset.selected).toBe('node/1')
+    })
+
+    test('a shop whose hours can’t be read is not treated as closed', async () => {
+      await searchAt(WEDNESDAY)
+      await user.click(screen.getByRole('checkbox', { name: /Open now/ }))
+      const mystery = card('Mystery Records')
+      expect(mystery.className).not.toMatch('is-closed')
+      expect(mystery.getAttribute('aria-disabled')).toBeNull()
+    })
+
+    test('unticking it brings everything back to normal', async () => {
+      await searchAt(WEDNESDAY)
+      const box = screen.getByRole('checkbox', { name: /Open now/ })
+      await user.click(box)
+      await user.click(box)
+      expect(document.querySelectorAll('.is-closed')).toHaveLength(0)
+      expect(card('Saturday Records').getAttribute('aria-disabled')).toBeNull()
+      expect(screen.getAllByRole('button', { name: /Records$/ })[0].textContent).toBe('Saturday Records')
+    })
+
+    test('a shop that is open on another day is closed now, and becomes available when it opens', async () => {
+      await searchAt(new Date('2026-10-10T19:00:00Z')) // Saturday 12:00 in Portland
+      await user.click(screen.getByRole('checkbox', { name: /Open now/ }))
+      expect(card('Saturday Records').getAttribute('aria-disabled')).toBeNull()
+      expect(card('Weekday Records').getAttribute('aria-disabled')).toBe('true')
+    })
   })
 
   test('phones can switch between the list and the map', async () => {

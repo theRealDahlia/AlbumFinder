@@ -416,12 +416,14 @@ export default function App() {
   // ---------- the store list ----------
   const timezone = place?.city.timezone
   const allStores = place ? place.stores : []
+  // With "Open now" on, shops known to be closed stay listed (greyed out, below the open ones);
+  // a shop whose hours can't be read isn't called closed.
+  const isClosed = (s) => openOnly && openStatus(parseHours(s.hours), now, timezone)?.open === false
   // Shops with the album first, then those with other records by the artist, then the rest.
   const stockRank = (s) => (stock[s.id]?.length ? 0 : others[s.id]?.length ? 1 : 2)
   const stores = allStores
     .filter((s) => radiusMiles == null || roundedMiles(s.distanceKm) <= radiusMiles)
-    .filter((s) => !openOnly || openStatus(parseHours(s.hours), now, timezone)?.open)
-    .sort((a, b) => stockRank(a) - stockRank(b) || a.distanceKm - b.distanceKm)
+    .sort((a, b) => Number(isClosed(a)) - Number(isClosed(b)) || stockRank(a) - stockRank(b) || a.distanceKm - b.distanceKm)
   const inStockCount = allStores.filter((s) => stock[s.id]?.length).length
   const otherWorksCount = allStores.filter((s) => !stock[s.id]?.length && others[s.id]?.length).length
   const anyHours = allStores.some((s) => parseHours(s.hours))
@@ -437,6 +439,7 @@ export default function App() {
       checked={checked.includes(s.id)}
       wanted={wanted}
       verified={verified[s.id]}
+      closed={isClosed(s)}
       selected={s.id === selectedId}
       onSelect={() => setSelectedId(s.id)}
     />
