@@ -186,6 +186,68 @@ test('artist only: a misspelt name still lists the artist MusicBrainz found', as
   assert.equal((await api.searchAlbums({ artist: 'Radiohed' })).length, 8)
 })
 
+// MusicBrainz scores an artist that shares a single word with the search very highly, so these
+// answers are shaped like the real ones for "whoopie cat" (Cat Stevens first, at 100).
+const STEVENS_ID = '22222222-2222-4222-8222-222222222222'
+const WHOOPIE_ID = '33333333-3333-4333-8333-333333333333'
+const CAT_STEVENS = { id: STEVENS_ID, name: 'Cat Stevens', 'sort-name': 'Stevens, Cat', score: 100, aliases: [{ name: 'Yusuf Islam' }, { name: 'Yusuf' }] }
+const WHOOPIE_CAT = { id: WHOOPIE_ID, name: 'Whoopie Cat Orchestra', 'sort-name': 'Whoopie Cat Orchestra', score: 99 }
+const CAT_POWER = { id: uuid(60), name: 'Cat Power', 'sort-name': 'Cat Power', score: 91 }
+const DOJA_CAT = { id: uuid(61), name: 'Doja Cat', 'sort-name': 'Doja Cat', score: 90 }
+
+function albumsBy(name) {
+  return json({ 'release-groups': Array.from({ length: 8 }, (_, i) => group(70 + i, `${name} ${i}`, name, { count: 20 })) })
+}
+
+test('artist only: a name that shares just one word with what was typed is not the artist', async () => {
+  const calls = mockFetch({
+    'musicbrainz.org/ws/2/artist': () => json({ artists: [CAT_STEVENS, CAT_POWER, DOJA_CAT] }),
+    'musicbrainz.org/ws/2/release-group': () => albumsBy('Wrong Artist'),
+  })
+  assert.deepEqual(await api.searchAlbums({ artist: 'whoopie cat' }), [], 'not Cat Stevens, Cat Power or Doja Cat')
+  assert.equal(calls.length, 1, 'no albums were looked up for any of them')
+})
+
+test('artist only: the artist that does fit is used, even when a partial match is ranked above it', async () => {
+  const calls = mockFetch({
+    'musicbrainz.org/ws/2/artist': () => json({ artists: [CAT_STEVENS, WHOOPIE_CAT, CAT_POWER] }),
+    'musicbrainz.org/ws/2/release-group': () => albumsBy('Whoopie Cat Orchestra'),
+  })
+  // (Results are cached per search, so this is not quite the same search as the one above.)
+  const albums = await api.searchAlbums({ artist: 'Whoopie Cat Orchestra' })
+  assert.equal(albums.length, 8)
+  assert.match(calls[1].url.searchParams.get('query'), new RegExp(`arid:${WHOOPIE_ID}`))
+  assert.doesNotMatch(calls[1].url.searchParams.get('query'), new RegExp(STEVENS_ID))
+  assert.match(calls[0].url.searchParams.get('limit'), /10/, 'a bit more room to find the right one')
+})
+
+test('artist only: part of a name, or one of the artist\'s aliases, still finds the artist', async () => {
+  for (const typed of ['stevens', 'Yusuf Islam', 'cat stevens']) {
+    const calls = mockFetch({
+      'musicbrainz.org/ws/2/artist': () => json({ artists: [CAT_STEVENS] }),
+      'musicbrainz.org/ws/2/release-group': () => albumsBy('Cat Stevens'),
+    })
+    assert.equal((await api.searchAlbums({ artist: typed })).length, 8, typed)
+    assert.match(calls[1].url.searchParams.get('query'), new RegExp(`arid:${STEVENS_ID}`), typed)
+  }
+})
+
+test('artist names: exact, close (typos and extra words allowed) or not a fit', async () => {
+  const { artistNameFit } = await import('../server/musicbrainz.js')
+  const radiohead = { name: 'Radiohead', 'sort-name': 'Radiohead' }
+  assert.equal(artistNameFit(radiohead, 'radiohead'), 'exact')
+  assert.equal(artistNameFit({ name: 'The Beatles' }, 'beatles'), 'exact', '"The" doesn\'t count')
+  assert.equal(artistNameFit(CAT_STEVENS, 'Stevens, Cat'), 'exact', 'by sort name')
+  assert.equal(artistNameFit(CAT_STEVENS, 'yusuf islam'), 'exact', 'by alias')
+  assert.equal(artistNameFit(radiohead, 'radiohed'), 'close', 'a typo')
+  assert.equal(artistNameFit(CAT_STEVENS, 'stevens'), 'close', 'fewer words than the name')
+  assert.equal(artistNameFit(CAT_STEVENS, 'whoopie cat'), null, 'one shared word is not enough')
+  assert.equal(artistNameFit(DOJA_CAT, 'whoopie cat'), null)
+  assert.equal(artistNameFit({ name: 'Bat' }, 'cat'), null, 'short words must match exactly')
+  assert.equal(artistNameFit({ name: 'Blur' }, 'blue'), 'close', 'four-letter words allow one slip')
+  assert.equal(artistNameFit(radiohead, ''), null)
+})
+
 test('album + artist: "and", "&" and "+" in artist names are interchangeable', async () => {
   for (const [typed, credited, album] of [
     ['Simon and Garfunkel', 'Simon & Garfunkel', 'Bookends'],

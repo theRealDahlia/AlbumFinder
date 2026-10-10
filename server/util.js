@@ -51,6 +51,29 @@ export function artistMatch(creditTokens, wantedTokens) {
   return credit.length === wanted.length ? 1 : 0.6
 }
 
+/** Edit distance between two words: how many single-letter changes turn one into the other. */
+function editDistance(a, b) {
+  let row = Array.from({ length: b.length + 1 }, (_, j) => j)
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i]
+    for (let j = 1; j <= b.length; j++) {
+      next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    }
+    row = next
+  }
+  return row[b.length]
+}
+
+/**
+ * Whether two words are the same allowing for a typo: one wrong, missing or extra letter, or two in
+ * long words. Words under four letters must match exactly, since one letter changes them completely.
+ */
+export function similarWord(a, b) {
+  if (a === b) return true
+  if (Math.min(a.length, b.length) < 4) return false
+  return editDistance(a, b) <= (Math.max(a.length, b.length) >= 8 ? 2 : 1)
+}
+
 export function haversineKm(lat1, lon1, lat2, lon2) {
   const rad = Math.PI / 180
   const a =

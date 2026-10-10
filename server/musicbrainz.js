@@ -1,6 +1,6 @@
 // Albums and artists, from MusicBrainz.
 
-import { HttpError, artistMatch, cleanInput, fetchJson, sleep, tokenize } from './util.js'
+import { HttpError, artistMatch, cleanInput, fetchJson, nameWords, similarWord, sleep, tokenize } from './util.js'
 import { cached, pace } from './shared.js'
 import { record } from './health.js'
 
@@ -35,16 +35,41 @@ async function musicbrainz(entity, lucene, limit) {
 }
 
 /**
+ * How an artist MusicBrainz returned fits the name that was typed:
+ *   'exact'  the typed words are all of one of the artist's names (or aliases)
+ *   'close'  every typed word is in one of those names, allowing a typo in longer words
+ *            ("Radiohed", or "Stevens" for Cat Stevens)
+ *   null     some typed word isn't in any of them ("whoopie cat" for Cat Stevens)
+ * MusicBrainz scores a name that shares just one word with the search very highly, so its
+ * score alone can't say whether this is the artist that was asked for.
+ */
+export function artistNameFit(artist, typed) {
+  const wanted = nameWords(tokenize(typed))
+  if (!wanted.length) return null
+  const names = [artist.name, artist['sort-name'], ...(artist.aliases || []).flatMap((a) => [a.name, a['sort-name']])]
+    .filter(Boolean)
+    .map((n) => nameWords(tokenize(n)))
+  if (names.some((credit) => artistMatch(credit, wanted) === 1)) return 'exact'
+  const close = (credit) => wanted.every((w) => credit.some((c) => similarWord(w, c)))
+  return names.some(close) ? 'close' : null
+}
+
+/**
  * An artist's official albums. A name search alone is swamped by bootlegs and
  * namesakes, so find the artist first. Prolific artists have hundreds of albums and
  * search results can't be sorted, so ask for widely released ones (10+ releases)
  * first and only top up with the rest for artists with few of those.
  */
-async function artistAlbums(escapedName) {
-  const found = await musicbrainz('artist', `artist:(${escapedName})`, 5)
-  const best = found.artists?.[0]
-  // MusicBrainz always returns its closest guess; a low score means no real match.
-  if (!best || best.score < 80) return []
+async function artistAlbums(name) {
+  const found = await musicbrainz('artist', `artist:(${luceneEscape(name)})`, 10)
+  // MusicBrainz always returns its closest guesses, even when they share only a word with the
+  // search: a low score means no real match, and the name has to fit what was typed.
+  const fits = (found.artists || [])
+    .filter((a) => a.score >= 80)
+    .map((artist) => ({ artist, fit: artistNameFit(artist, name) }))
+    .filter((x) => x.fit)
+  const best = (fits.find((x) => x.fit === 'exact') ?? fits[0])?.artist
+  if (!best) return []
   const base = `arid:${best.id} AND primarytype:album AND status:official`
   const popular = (await musicbrainz('release-group', `${base} AND releases:[10 TO 100000]`, 100))['release-groups'] || []
   if (popular.length >= 8) return popular
@@ -72,7 +97,7 @@ export async function searchAlbums({ album = '', artist = '' } = {}) {
     } else if (a) {
       groups = (await musicbrainz('release-group', `(releasegroup:(${ta})^3 OR artist:(${ta})) AND primarytype:album`, 40))['release-groups']
     } else {
-      groups = await artistAlbums(tb)
+      groups = await artistAlbums(b)
     }
 
     // MusicBrainz relevance alone puts obscure same-titled albums first, so rerank:
