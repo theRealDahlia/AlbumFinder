@@ -5,6 +5,7 @@ import StoreCard from './StoreCard.jsx'
 import { openStatus, parseHours } from './hours.js'
 import { roundedMiles } from './distance.js'
 import { useSuggestions } from './useSuggestions.js'
+import { normalizeStock, settleDiscogs } from './discogsWait.js'
 import { AlbumHeader, ArtistHeader, CoverStack, LoadingResults, PinIcon, StackIcon } from './views.jsx'
 import './App.css'
 
@@ -25,7 +26,18 @@ const RADII_MILES = [1, 2, 5, 10, 25]
 const VERIFY_MAX = 100
 const POLL_EVERY_MS = 15000
 const POLL_ATTEMPTS = 30
+// While a search loads, wait this long for those checks (asking every couple of seconds) so the
+// results appear already sorted out; what isn't done by then fills in afterwards.
+const DISCOGS_WAIT_MS = 40000
+const DISCOGS_POLL_MS = 2000
 const NO_STOCK = { stock: {}, others: {}, checked: [] }
+
+/** The ids of the shops to check on Discogs: the nearest ones, which the server takes first. */
+const nearestIds = (stores) =>
+  [...stores]
+    .sort((a, b) => a.distanceKm - b.distanceKm)
+    .slice(0, VERIFY_MAX)
+    .map((s) => s.id)
 const FIELDS = ['album', 'artist', 'city', 'state', 'near', 'radius']
 // Moving the map searches around its center, once it has stopped moving for a moment, and
 // not when zoomed out so far that "around here" would be a whole region.
@@ -140,7 +152,7 @@ export default function App() {
     inFlight.current?.abort()
     const search = new AbortController()
     inFlight.current = search
-    setPending({ query: q, albumsDone: false, storesDone: false })
+    setPending({ query: q, albumsDone: false, storesDone: false, discogsLeft: null })
     setError(null)
     setSelectedId(null)
     setRadiusMiles(null)
@@ -159,15 +171,47 @@ export default function App() {
     const [albumRes, storeRes] = await Promise.allSettled([albumsReq, storesReq])
     // A newer search replaced this one: its results (or abort errors) are not wanted.
     if (search.signal.aborted) return
-    inFlight.current = null
-    setPending(null)
-    setError(null) // e.g. an "enter a city" message from a submit made while this was loading
     if (albumRes.status === 'rejected' || storeRes.status === 'rejected') {
+      inFlight.current = null
+      setPending(null)
+      setError(null) // e.g. an "enter a city" message from a submit made while this was loading
       const failure = albumRes.reason || storeRes.reason
       setError({ message: failure.message, retry: canRetry(failure) ? q : null })
       setAlbums(null)
       setPlace(null)
       return
+    }
+
+    // Hold the loading screen while Discogs is asked about these shops, and what they have for the
+    // search, so the results don't shuffle in front of the visitor.
+    const found = albumRes.value
+    const chosen = q.album ? found[0] || null : null
+    const artist = (!q.album && usualCredit(found)) || q.artist
+    const stockQuery = chosen || artist ? [chosen?.title ?? '', chosen?.artist ?? artist] : null
+    let discogs = null
+    if (storeRes.value.stores.length) {
+      discogs = await settleDiscogs({
+        ids: nearestIds(storeRes.value.stores),
+        stockQuery,
+        signal: search.signal,
+        budgetMs: DISCOGS_WAIT_MS,
+        pollMs: DISCOGS_POLL_MS,
+        onProgress: (left) => {
+          if (!search.signal.aborted) setPending((p) => p && { ...p, discogsLeft: left })
+        },
+      })
+      if (search.signal.aborted) return
+    }
+    inFlight.current = null
+    setPending(null)
+    setError(null) // e.g. an "enter a city" message from a submit made while this was loading
+    if (discogs) {
+      setVerified((known) => ({ ...known, ...discogs.verified }))
+      setVerifyPending(discogs.verifyPending > 0)
+      if (discogs.report && stockQuery) {
+        setStockFor({ key: JSON.stringify(stockQuery), ...discogs.report })
+        setStockPending(discogs.stockPending > 0)
+      }
     }
     setSearched(q)
     setAlbums(albumRes.value)
@@ -186,7 +230,13 @@ export default function App() {
     shownArea.current = null
     setAreaStatus(null)
   }
-  useEffect(() => () => clearTimeout(moveTimer.current), [])
+  useEffect(
+    () => () => {
+      clearTimeout(moveTimer.current)
+      inFlight.current?.abort() // a search still loading (or waiting on Discogs) stops with the page
+    },
+    [],
+  )
 
   const fillForm = (q) => {
     setAlbumQuery(q.album || '')
@@ -349,7 +399,7 @@ export default function App() {
         .findStock(stockTitle, stockArtist, request.signal)
         .then((report) => {
           // Fill in what an answer leaves out, so a server running older code can't blank the page.
-          const { stock = {}, others = {}, checked = [], pending = 0 } = report ?? {}
+          const { stock, others, checked, pending } = normalizeStock(report)
           setStockFor({ key: stockKey, stock, others, checked })
           setStockPending(pending > 0)
           if (pending && attempt < POLL_ATTEMPTS) timer = setTimeout(() => check(attempt + 1), POLL_EVERY_MS)
@@ -365,13 +415,7 @@ export default function App() {
 
   // ---------- vinyl sellers confirmed on Discogs ----------
   // The server checks shops in the background (Discogs is slow to ask), so ask again until it's done.
-  const verifyKey = place
-    ? [...place.stores]
-        .sort((a, b) => a.distanceKm - b.distanceKm)
-        .slice(0, VERIFY_MAX)
-        .map((s) => s.id)
-        .join(',')
-    : ''
+  const verifyKey = place ? nearestIds(place.stores).join(',') : ''
   useEffect(() => {
     if (!verifyKey) return
     const request = new AbortController()

@@ -810,34 +810,113 @@ describe('what verified shops have for the search', () => {
     expect(await within(card('Near Records')).findByText(/^No records by Radiohead in their Discogs stock\./)).toBeTruthy()
   })
 
-  test('asks again while inventories are downloading, then stops', async () => {
+})
+
+describe('Discogs checks while the results load', () => {
+  const SELLER = { seller: 'S', url: 'https://www.discogs.com/seller/S/profile' }
+  const item = (title) => ({ source: 'discogs', title, format: 'LP' })
+  const FOUR = {
+    ...PORTLAND,
+    stores: [store(1, 'Nearest Records', 0.1), store(2, 'Second Records', 1), store(3, 'Third Records', 2), store(4, 'Fourth Records', 3)],
+  }
+  const READY = report({ stock: { 'node/4': [item('Rumours')] }, checked: ['node/4'] })
+  const loading = () => screen.queryByRole('region', { name: 'Loading results' })
+  const startFromLink = () => {
+    history.replaceState(null, '', '/?album=Rumours&artist=Fleetwood+Mac&city=Portland')
+    api.findStores.mockResolvedValue(FOUR)
+    render(<App />)
+  }
+  afterEach(() => vi.useRealTimers())
+
+  test('holds the loading screen until the checks are in, then shows everything at once', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
-    try {
-      history.replaceState(null, '', '/?album=Rumours&artist=Fleetwood+Mac&city=Portland')
-      api.findStores.mockResolvedValue(FOUR)
-      api.findStock.mockResolvedValueOnce(report({ pending: 2 })).mockResolvedValue(MIXED)
-      render(<App />)
-      await screen.findByText('4 record stores in Portland')
-      await waitFor(() => expect(api.findStock).toHaveBeenCalledTimes(1))
-      expect((await screen.findByRole('status')).textContent).toMatch(/Checking shops on Discogs/)
-      await act(() => vi.advanceTimersByTimeAsync(15000))
-      expect(await screen.findAllByText('In stock')).toHaveLength(1)
-      expect(screen.queryByRole('status')).toBeNull()
-      await act(() => vi.advanceTimersByTimeAsync(60000))
-      expect(api.findStock).toHaveBeenCalledTimes(2)
-    } finally {
-      vi.useRealTimers()
-    }
+    api.findVerification
+      .mockResolvedValueOnce({ verified: {}, pending: 2 })
+      .mockResolvedValue({ verified: { 'node/4': SELLER }, pending: 0 })
+    api.findStock.mockResolvedValueOnce(report({ pending: 1 })).mockResolvedValue(READY)
+    startFromLink()
+    await waitFor(() => expect(api.findVerification).toHaveBeenCalledTimes(1))
+    expect(loading()).toBeTruthy()
+    expect(screen.queryByText('4 record stores in Portland')).toBeNull()
+    expect(await screen.findByText('Checking 3 shops on Discogs')).toBeTruthy()
+
+    await act(() => vi.advanceTimersByTimeAsync(2000))
+    await screen.findByText('4 record stores in Portland')
+    // Already sorted out in the very first view of the results: nothing left to appear.
+    expect(loading()).toBeNull()
+    expect(screen.getByText('In stock')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Verified vinyl sellers 1' })).toBeTruthy()
+    expect(screen.queryByRole('status')).toBeNull()
   })
 
-  test('asks again when another shop is confirmed on Discogs', async () => {
-    const check = controllable()
-    api.findVerification.mockImplementation(check.impl)
-    api.findStock.mockResolvedValue(report())
-    await searchRumours()
-    await waitFor(() => expect(api.findStock).toHaveBeenCalledTimes(1))
-    await act(async () => check.calls[0].resolve({ verified: { 'node/2': { seller: 'S', url: 'https://www.discogs.com/seller/S/profile' } }, pending: 0 }))
-    await waitFor(() => expect(api.findStock).toHaveBeenCalledTimes(2))
+  test('does not wait, or show a step, when everything is already known', async () => {
+    api.findVerification.mockResolvedValue({ verified: { 'node/4': SELLER }, pending: 0 })
+    api.findStock.mockResolvedValue(READY)
+    startFromLink()
+    await screen.findByText('4 record stores in Portland')
+    expect(screen.getByText('In stock')).toBeTruthy()
+    expect(screen.queryByText(/on Discogs$/)).toBeNull()
+    expect(api.findVerification.mock.calls[0][0]).toEqual(['node/1', 'node/2', 'node/3', 'node/4'])
+  })
+
+  test('gives up after the time limit, shows the results, and carries on in the background', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    api.findVerification.mockResolvedValue({ verified: {}, pending: 2 })
+    startFromLink()
+    await waitFor(() => expect(api.findVerification).toHaveBeenCalled())
+    await act(() => vi.advanceTimersByTimeAsync(30000))
+    expect(loading()).toBeTruthy() // still waiting
+    expect(api.findVerification.mock.calls.length).toBeGreaterThan(10) // asking every couple of seconds
+    await act(() => vi.advanceTimersByTimeAsync(12000))
+    await screen.findByText('4 record stores in Portland')
+    expect(loading()).toBeNull()
+    expect((await screen.findByRole('status')).textContent).toMatch(/Checking shops on Discogs/)
+    expect(screen.queryByRole('link', { name: 'Sells vinyl · Discogs' })).toBeNull()
+
+    const stockAsks = api.findStock.mock.calls.length
+    api.findVerification.mockResolvedValue({ verified: { 'node/2': SELLER }, pending: 0 })
+    await act(() => vi.advanceTimersByTimeAsync(15000))
+    expect(await screen.findByRole('link', { name: 'Sells vinyl · Discogs' })).toBeTruthy()
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(api.findStock.mock.calls.length).toBeGreaterThan(stockAsks) // a newly confirmed shop: its stock is asked for
+  })
+
+  test('a failing Discogs lookup neither holds up nor fails the search', async () => {
+    api.findVerification.mockRejectedValue(new Error('down'))
+    api.findStock.mockRejectedValue(new Error('down'))
+    startFromLink()
+    expect(await screen.findByText('4 record stores in Portland')).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  test('a search with no shops does not wait on Discogs', async () => {
+    api.findVerification.mockResolvedValue({ verified: {}, pending: 5 })
+    history.replaceState(null, '', '/?album=Rumours&artist=Fleetwood+Mac&city=Portland')
+    api.findStores.mockResolvedValue({ city: PORTLAND.city, stores: [] })
+    render(<App />)
+    expect(await screen.findByText(/No record stores with opening hours are mapped/)).toBeTruthy()
+    expect(api.findVerification).not.toHaveBeenCalled()
+  })
+
+  test('leaving while it waits cancels the wait', async () => {
+    api.findVerification.mockResolvedValue({ verified: {}, pending: 2 })
+    startFromLink()
+    await waitFor(() => expect(api.findVerification).toHaveBeenCalled())
+    const signal = api.findVerification.mock.calls[0][1]
+    expect(signal.aborted).toBe(false)
+    await user.click(screen.getByRole('link', { name: 'Stacks home' }))
+    expect(signal.aborted).toBe(true)
+    expect(loading()).toBeNull()
+  })
+
+  test('closing the page cancels the wait too', async () => {
+    api.findVerification.mockResolvedValue({ verified: {}, pending: 2 })
+    startFromLink()
+    await waitFor(() => expect(api.findVerification).toHaveBeenCalled())
+    const signal = api.findVerification.mock.calls[0][1]
+    cleanup()
+    expect(signal.aborted).toBe(true)
   })
 })
 
@@ -937,41 +1016,6 @@ describe('vinyl sellers verified on Discogs', () => {
     await user.selectOptions(screen.getByLabelText('Distance'), '1')
     expect(screen.queryByRole('heading', { name: /Verified vinyl sellers/ })).toBeNull()
     expect(screen.getAllByRole('button', { name: /Records$/ }).map((b) => b.textContent)).toEqual(['Near Records'])
-  })
-
-  test('says so while shops are still being checked', async () => {
-    const check = controllable()
-    api.findVerification.mockImplementation(check.impl)
-    render(<App />)
-    await search({ album: 'Rumours', city: 'Portland' })
-    await screen.findByText('2 record stores in Portland')
-    expect(screen.queryByRole('status')).toBeNull()
-    await waitFor(() => expect(check.calls).toHaveLength(1))
-    await act(async () => check.calls[0].resolve({ verified: {}, pending: 2 }))
-    expect((await screen.findByRole('status')).textContent).toMatch(/Checking shops on Discogs/)
-  })
-
-  test('keeps asking while shops are still being checked, then stops', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
-    try {
-      history.replaceState(null, '', '/?album=Rumours&city=Portland')
-      api.findVerification
-        .mockResolvedValueOnce({ verified: {}, pending: 2 })
-        .mockResolvedValueOnce({ verified: { 'node/1': SELLER }, pending: 1 })
-        .mockResolvedValue({ verified: { 'node/1': SELLER }, pending: 0 })
-      render(<App />)
-      await screen.findByText('2 record stores in Portland')
-      await waitFor(() => expect(api.findVerification).toHaveBeenCalledTimes(1))
-      expect(screen.queryByRole('link', { name: 'Sells vinyl · Discogs' })).toBeNull()
-      await act(() => vi.advanceTimersByTimeAsync(15000))
-      expect(await screen.findByRole('link', { name: 'Sells vinyl · Discogs' })).toBeTruthy()
-      await act(() => vi.advanceTimersByTimeAsync(15000))
-      expect(api.findVerification).toHaveBeenCalledTimes(3)
-      await act(() => vi.advanceTimersByTimeAsync(60000))
-      expect(api.findVerification).toHaveBeenCalledTimes(3)
-    } finally {
-      vi.useRealTimers()
-    }
   })
 
   test('badges stay when the map moves to a new area', async () => {

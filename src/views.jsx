@@ -103,7 +103,7 @@ export function CoverStack({ examples, onPick }) {
  * Shown while a search loads: a turntable, the two lookups with a tick as each one
  * actually finishes, and a shimmering outline of the results to come.
  */
-export function LoadingResults({ query, albumsDone, storesDone }) {
+export function LoadingResults({ query, albumsDone, storesDone, discogsLeft }) {
   const what =
     query.album && query.artist
       ? `${query.album} by ${query.artist}`
@@ -117,6 +117,11 @@ export function LoadingResults({ query, albumsDone, storesDone }) {
     { label: `Looking up ${what}`, done: albumsDone },
     { label: `Finding record stores ${where}`, done: storesDone },
   ]
+  // Once the shops are known, Discogs is asked which sell vinyl and what they have; only shown when
+  // that isn't already answered.
+  if (albumsDone && storesDone && discogsLeft > 0) {
+    steps.push({ label: `Checking ${discogsLeft} ${discogsLeft === 1 ? 'shop' : 'shops'} on Discogs`, done: false })
+  }
   return (
     <section className="loading" aria-busy="true" aria-label="Loading results">
       <div className="loading-status">
