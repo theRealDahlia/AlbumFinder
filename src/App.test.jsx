@@ -120,6 +120,15 @@ describe('front page', () => {
     expect(screen.queryByText('Album Finder')).toBeNull()
   })
 
+  test('the logo has a stack of records beside it, not a single vinyl disc', () => {
+    render(<App />)
+    const logo = screen.getByRole('link', { name: 'Stacks home' })
+    expect(logo.querySelector('svg.stack-icon')).toBeTruthy()
+    expect(logo.querySelectorAll('svg.stack-icon ellipse').length).toBeGreaterThanOrEqual(3)
+    expect(logo.querySelector('svg.vinyl')).toBeNull()
+    expect(logo.querySelector('svg').getAttribute('aria-hidden')).toBe('true')
+  })
+
   test('shows the headline, search form and suggestions, and no results', () => {
     render(<App />)
     expect(screen.getByRole('heading', { level: 1 })).toHaveProperty('textContent', 'Find that record on a real shelf.')

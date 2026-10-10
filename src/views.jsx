@@ -208,6 +208,23 @@ export function PinIcon() {
   )
 }
 
+/** A pile of three records seen at an angle, for the logo. Each disc is a top ellipse over a short side. */
+export function StackIcon() {
+  const disc = (cy) => (
+    <g key={cy} fill="currentColor" stroke="var(--bg)" strokeWidth="1.2">
+      <path d={`M3 ${cy} v3 a13 4.5 0 0 0 26 0 v-3 z`} />
+      <ellipse cx="16" cy={cy} rx="13" ry="4.5" />
+    </g>
+  )
+  return (
+    <svg className="stack-icon" viewBox="0 0 32 32" aria-hidden="true">
+      {[23, 16, 9].map(disc)}
+      <ellipse cx="16" cy="9" rx="4.6" ry="1.7" fill="var(--accent)" />
+      <ellipse cx="16" cy="9" rx="0.9" ry="0.35" fill="var(--bg)" />
+    </svg>
+  )
+}
+
 export function Vinyl() {
   return (
     <svg className="vinyl" viewBox="0 0 32 32" aria-hidden="true">

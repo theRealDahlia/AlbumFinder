@@ -5,7 +5,7 @@ import StoreCard from './StoreCard.jsx'
 import { openStatus, parseHours } from './hours.js'
 import { roundedMiles } from './distance.js'
 import { useSuggestions } from './useSuggestions.js'
-import { AlbumHeader, ArtistHeader, CoverStack, LoadingResults, PinIcon, Vinyl } from './views.jsx'
+import { AlbumHeader, ArtistHeader, CoverStack, LoadingResults, PinIcon, StackIcon } from './views.jsx'
 import './App.css'
 
 // Front-page suggestions. `id` is the MusicBrainz release group, used for the cover.
@@ -459,7 +459,7 @@ export default function App() {
     <div className="app">
       <header className={`hero ${home ? 'home' : 'compact'}`}>
         <a href="/" className="brand" onClick={goHome} aria-label="Stacks home">
-          <Vinyl />
+          <StackIcon />
           <span>Stacks</span>
         </a>
         <div className="hero-main">

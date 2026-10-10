@@ -15,12 +15,12 @@ main { flex: 1; }
   display: inline-flex; align-items: center; gap: 10px;
   font-weight: 700; font-size: 18px; letter-spacing: -0.01em;
 }
-.brand .vinyl { width: 30px; height: 30px; color: var(--text); }
+.brand .stack-icon { width: 30px; height: 30px; color: var(--text); }
 a.brand { color: inherit; text-decoration: none; border-radius: 8px; }
 a.brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-a.brand .vinyl { transition: transform 0.6s ease; }
-a.brand:hover .vinyl { transform: rotate(180deg); }
-@media (prefers-reduced-motion: reduce) { a.brand .vinyl { transition: none; } a.brand:hover .vinyl { transform: none; } }
+a.brand .stack-icon { transition: transform 0.25s ease; }
+a.brand:hover .stack-icon { transform: translateY(-2px); }
+@media (prefers-reduced-motion: reduce) { a.brand .stack-icon { transition: none; } a.brand:hover .stack-icon { transform: none; } }
 .hero h1 {
   font-size: clamp(36px, 6vw, 64px);
   line-height: 1.02; letter-spacing: -0.035em;
