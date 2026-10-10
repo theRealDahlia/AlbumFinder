@@ -193,3 +193,69 @@ test('GET /api/verification checks the shops a search returned, and only those',
   })
   assert.equal((await realFetch(`${base}/api/verification`)).status, 200, 'no ids is fine')
 })
+
+// ---------- checking ahead of searches ----------
+
+async function until(check) {
+  for (let i = 0; i < 400; i++) {
+    if (await check()) return
+    await new Promise((r) => setTimeout(r, 10))
+  }
+  throw new Error('gave up waiting')
+}
+const calledOrder = (calls) => calls.map((c) => c.url.pathname.split('/')[2])
+const oneWord = (n, name) => ({ id: `node/${n}`, name, website: null, city: null })
+
+test('shops checked ahead of time wait behind the ones a visitor is waiting on', async () => {
+  const calls = mockFetch({ 'api.discogs.com': notFound })
+  const [alpha, beta, gamma, delta] = [oneWord(101, 'Alpha'), oneWord(102, 'Beta'), oneWord(103, 'Gamma'), oneWord(104, 'Delta')]
+  assert.equal(await verify.prewarmVerification([alpha, beta, gamma]), 3)
+  verify.rememberStores([delta])
+  assert.deepEqual(await verify.verificationFor(['node/104']), { verified: {}, pending: 1 })
+  await until(() => calls.length >= 4)
+  assert.deepEqual(calledOrder(calls), ['alpha', 'delta', 'beta', 'gamma'], 'alpha had already started; then the visitor\'s shop; then the rest')
+})
+
+test('a shop queued ahead of time is moved up when a visitor asks for it', async () => {
+  const calls = mockFetch({ 'api.discogs.com': notFound })
+  await verify.prewarmVerification([oneWord(111, 'Eta'), oneWord(112, 'Theta'), oneWord(113, 'Iota')])
+  assert.deepEqual(await verify.verificationFor(['node/113']), { verified: {}, pending: 1 })
+  await until(() => calls.length >= 3)
+  assert.deepEqual(calledOrder(calls), ['eta', 'iota', 'theta'])
+})
+
+test('shops already checked, queued or recently failed are not queued again', async () => {
+  await until(async () => {
+    const saved = await savedFile()
+    return ['node/101', 'node/102', 'node/103', 'node/104'].every((id) => id in saved)
+  })
+  const calls = mockFetch({ 'api.discogs.com': notFound })
+  const checked = [oneWord(101, 'Alpha'), oneWord(102, 'Beta')]
+  assert.equal(await verify.prewarmVerification(checked), 0, 'saved answers are still good')
+  assert.equal(await verify.prewarmVerification([oneWord(121, 'Kappa'), oneWord(121, 'Kappa')]), 1, 'listed twice, queued once')
+  await until(() => calls.length >= 1)
+  assert.equal(await verify.prewarmVerification([oneWord(121, 'Kappa')]), 0)
+})
+
+test('saved cities are checked ahead of time, and their inventories downloaded', async () => {
+  mockFetch({
+    'nominatim.openstreetmap.org': () => json([{ addresstype: 'city', lat: '54.0', lon: '-2.0', display_name: 'Warmtown', boundingbox: ['53.9', '54.1', '-2.1', '-1.9'] }]),
+    'overpass-api.de': () =>
+      json({ elements: [{ type: 'node', id: 88, lat: 54, lon: -2, tags: { name: 'Warm Wax', shop: 'records', opening_hours: 'Mo-Sa 10:00-18:00', website: 'https://warmwax.example' } }] }),
+    'api.discogs.com': notFound,
+    'api.discogs.com/users/warmwax': () => json(profile({ username: 'WarmWax', home_page: 'https://warmwax.example' })),
+    'api.discogs.com/users/WarmWax/inventory': () => json({ pagination: { page: 1, pages: 1, items: 1 }, listings: [lp()] }),
+  })
+  await (await realFetch(`${base}/api/stores?city=Warmtown`)).json()
+  await new Promise((r) => setTimeout(r, 80)) // the city's list is saved to disk after the answer goes out
+  assert.equal(await verify.prewarmDiscogs(), 1, 'only the new shop: the other saved city is already checked')
+
+  await until(async () => (await savedFile())['node/88']?.status === 'verified')
+  const answer = await verify.verificationFor(['node/88'])
+  assert.deepEqual(answer.pending, 0, 'answered at once: nobody had to wait for it')
+  assert.equal(answer.verified['node/88'].seller, 'WarmWax')
+
+  await until(() => readFile(join(dir, 'discogs', 'warmwax.json'), 'utf8').then(() => true, () => false))
+  const inventory = JSON.parse(await readFile(join(dir, 'discogs', 'warmwax.json'), 'utf8'))
+  assert.equal(inventory.items[0].title, 'Rumours', 'the stock is ready too')
+})

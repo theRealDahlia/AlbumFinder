@@ -243,6 +243,11 @@ function fromDisk(value) {
   return { ...value, city: { ...value.city, timezone }, stores }
 }
 
+/** Every saved store list ({ city, stores }), current or stale, for work that gets ready ahead of searches. */
+export async function cachedStoreLists() {
+  return Object.values(await loadStoresDisk()).map((entry) => fromDisk(entry.value))
+}
+
 export async function findStores(city, state = '') {
   if (!cleanInput(city, 120)) throw new HttpError(400, 'Enter a city')
   const c = placeQuery(city, state)

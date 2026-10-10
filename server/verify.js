@@ -8,7 +8,8 @@
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { discogs } from './discogs.js'
+import { discogs, syncInBackground } from './discogs.js'
+import { cachedStoreLists } from './stores.js'
 import { isVinyl } from './stock.js'
 
 const DATA_DIR = process.env.DATA_DIR || join(process.cwd(), 'data')
@@ -20,6 +21,7 @@ const FAILED_RETRY_MS = 10 * 60 * 1000
 const MAX_RESULTS = 5000
 const MAX_KNOWN = 20000
 const MAX_QUEUE = 300
+const MAX_WARM_QUEUE = 3000
 const MAX_IDS = 100
 const MAX_CANDIDATES = 5
 
@@ -174,8 +176,10 @@ export async function verifiedSellers() {
 // Shops the server has returned in searches. Only these can be checked, so a visitor can't
 // make us look up arbitrary names on Discogs.
 const known = new Map()
-const queue = []
+const queue = [] // shops a visitor is waiting on
 const waiting = new Set()
+const warmQueue = [] // shops checked ahead of time, only when nobody is waiting
+const warmWaiting = new Set()
 const failedAt = new Map()
 let current = null
 let working = false
@@ -192,15 +196,18 @@ export function rememberStores(stores) {
 async function work() {
   if (working) return
   working = true
+  let warmed = false
   try {
-    while (queue.length) {
-      const store = queue.shift()
+    while (queue.length || warmQueue.length) {
+      const live = queue.length > 0
+      const store = live ? queue.shift() : warmQueue.shift()
       current = store.id
-      waiting.delete(store.id)
+      ;(live ? waiting : warmWaiting).delete(store.id)
       try {
         const outcome = await verifyStore(store)
         results[store.id] = { name: store.name, ...outcome, checkedAt: Date.now() }
         await saveResults()
+        if (!live && outcome.status === 'verified') warmed = true
       } catch (err) {
         failedAt.set(store.id, Date.now())
         console.warn(`[discogs-verify] ${store.name}: ${err.message}`)
@@ -211,6 +218,9 @@ async function work() {
     current = null
     working = false
   }
+  // Shops confirmed ahead of time have their inventories downloaded too, so a search that
+  // comes later finds the stock ready. (Searches ask for this themselves.)
+  if (warmed) syncInBackground(await verifiedSellers())
 }
 
 const inFlight = (id) => waiting.has(id) || current === id
@@ -235,6 +245,13 @@ export async function verificationFor(ids) {
       }
     } else if (inFlight(id)) {
       pending++
+    } else if (warmWaiting.has(id)) {
+      // Someone is waiting on a shop that was only queued to be checked ahead of time: move it up.
+      warmQueue.splice(warmQueue.findIndex((s) => s.id === id), 1)
+      warmWaiting.delete(id)
+      queue.push(store)
+      waiting.add(id)
+      pending++
     } else if (!recentlyFailed(id) && queue.length < MAX_QUEUE) {
       queue.push(store)
       waiting.add(id)
@@ -243,4 +260,37 @@ export async function verificationFor(ids) {
   }
   if (queue.length) work()
   return { verified, pending }
+}
+
+/**
+ * Queue shops to be checked ahead of any search, behind the ones visitors are waiting on.
+ * Returns how many were queued (those already checked, queued or recently failed are skipped).
+ */
+export async function prewarmVerification(stores) {
+  await loadResults()
+  rememberStores(stores)
+  let added = 0
+  for (const { id } of stores) {
+    const store = known.get(id)
+    if (freshResult(store) || inFlight(id) || warmWaiting.has(id) || recentlyFailed(id)) continue
+    if (warmQueue.length >= MAX_WARM_QUEUE) break
+    warmQueue.push(store)
+    warmWaiting.add(id)
+    added++
+  }
+  if (added) work()
+  return added
+}
+
+/**
+ * Get ready for searches in the cities whose shop lists are saved: check the nearest shops of
+ * each on Discogs, in the background, so a search finds its answers already there.
+ */
+export async function prewarmDiscogs({ perCity = MAX_IDS } = {}) {
+  let added = 0
+  for (const { stores } of await cachedStoreLists()) {
+    const nearest = [...stores].sort((a, b) => a.distanceKm - b.distanceKm).slice(0, perCity)
+    added += await prewarmVerification(nearest)
+  }
+  return added
 }

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { apiMiddleware } from './api.js'
 import { refreshAgingCities } from './stores.js'
 import { syncAll } from './discogs.js'
-import { verifiedSellers } from './verify.js'
+import { prewarmDiscogs, verifiedSellers } from './verify.js'
 
 const DIST = fileURLToPath(new URL('../dist', import.meta.url))
 const PORT = Number(process.env.PORT) || 3000
@@ -92,3 +92,13 @@ const syncDiscogs = () =>
     .catch((err) => console.warn('[discogs]', err.message))
 setTimeout(syncDiscogs, 60 * 1000).unref()
 setInterval(syncDiscogs, 24 * HOUR).unref()
+
+// Check the shops of every saved city on Discogs ahead of searches, so results are already
+// verified when someone looks (it takes a while: Discogs allows only a few requests a minute,
+// and searches always go first). Repeated every few hours to pick up new shops and old answers.
+const prewarm = () =>
+  prewarmDiscogs()
+    .then((queued) => queued && console.log(`[discogs-prewarm] ${queued} shops queued`))
+    .catch((err) => console.warn('[discogs-prewarm]', err.message))
+setTimeout(prewarm, 2 * 60 * 1000).unref()
+setInterval(prewarm, 6 * HOUR).unref()
