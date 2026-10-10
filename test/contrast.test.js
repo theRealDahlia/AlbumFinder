@@ -34,6 +34,8 @@ const PAIRS = [
   ['accent-ink', 'accent'], // "Find it" button
   ['ok', 'bg'], // "Open now"
   ['ok', 'surface'], // "Open now" on a store card
+  ['closed', 'bg'], // "Closed"
+  ['closed', 'surface'], // "Closed" on a store card
   ['ok', 'ok-bg'], // "In stock" heading and links
   ['text', 'ok-bg'], // stock listings
   ['muted', 'ok-bg'], // format and condition
@@ -48,3 +50,12 @@ for (const [name, theme] of [['light', light], ['dark', dark]]) {
     }
   })
 }
+
+test('the "Closed" status on a store card is red, from the closed colour', () => {
+  const appCss = readFileSync(new URL('../src/App.css', import.meta.url), 'utf8')
+  assert.match(appCss, /\.open-status\.closed\s*\{\s*color:\s*var\(--closed\);?\s*\}/)
+  for (const [name, theme] of [['light', light], ['dark', dark]]) {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(theme.closed.slice(i, i + 2), 16))
+    assert.ok(r > 150 && r > g * 1.8 && r > b * 1.8, `${name} closed colour ${theme.closed} should read as red`)
+  }
+})

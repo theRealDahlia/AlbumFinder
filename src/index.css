@@ -11,6 +11,7 @@
   --warn-bg: #fdf0e7;
   --ok: #17703d; /* "Open now", "In stock" */
   --ok-bg: #e5f5ec;
+  --closed: #c0262d; /* "Closed" */
   --shadow: 0 1px 2px rgb(28 25 23 / 0.06), 0 4px 16px rgb(28 25 23 / 0.06);
   color-scheme: light dark;
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -34,6 +35,7 @@
     --warn-bg: #33221a;
     --ok: #3ccf7d;
     --ok-bg: #173324;
+    --closed: #ff6b6b;
     --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 16px rgb(0 0 0 / 0.25);
   }
 }

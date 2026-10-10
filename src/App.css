@@ -342,7 +342,7 @@ button.link.back:hover { color: var(--text); text-decoration: underline; }
 .missing { color: var(--muted); font-size: 14px; margin: 16px 0 0; }
 .open-status { display: inline-block; margin: 6px 0 0; font-size: 13px; font-weight: 600; }
 .open-status.open { color: var(--ok); }
-.open-status.closed { color: var(--muted); }
+.open-status.closed { color: var(--closed); }
 .store.has-stock { border-color: var(--ok); }
 .verified { margin: 6px 0 0; }
 .verified a {
